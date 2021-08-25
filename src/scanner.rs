@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use crate::token::{Token, TokenType};
 
 pub struct Scanner {
@@ -8,23 +7,17 @@ pub struct Scanner {
     start: u32,
     current: u32,
     line: u32,
-    keywords: HashMap<String, TokenType>
 }
 
 impl Scanner {
-    pub fn new(source: String) -> Scanner {
-        let mut keywords = HashMap::new();
-        keywords.insert(String::from("or"), TokenType::Or);
-        keywords.insert(String::from("nil"), TokenType::Nil);
-
-        Scanner {
+    pub fn new(source: String) -> Self {
+        Self {
             source,
             tokens: vec![],
             errors: vec![],
             start: 0,
             current: 0,
             line: 1,
-            keywords
         }
     }
 
@@ -46,9 +39,28 @@ impl Scanner {
         match c {
             '(' => self.add_token(TokenType::LeftParen),
             ')' => self.add_token(TokenType::RightParen),
+            '{' => self.add_token(TokenType::LeftBrace),
+            '}' => self.add_token(TokenType::RightBrace),
+            ',' => self.add_token(TokenType::Comma),
             '.' => self.add_token(TokenType::Dot),
+            '-' => self.add_token(TokenType::Minus),
+            '+' => self.add_token(TokenType::Plus),
+            ';' => self.add_token(TokenType::Semicolon),
+            '*' => self.add_token(TokenType::Star),
             '!' => {
                 let token_type = if self.current_match('=') { TokenType::BangEqual } else { TokenType::Bang };
+                self.add_token(token_type);
+            },
+            '=' => {
+                let token_type = if self.current_match('=') { TokenType::EqualEqual } else { TokenType::Equal };
+                self.add_token(token_type);
+            },
+            '>' => {
+                let token_type = if self.current_match('=') { TokenType::GreaterEqual } else { TokenType::Greater };
+                self.add_token(token_type);
+            },
+            '<' => {
+                let token_type = if self.current_match('=') { TokenType::LessEqual } else { TokenType::Less };
                 self.add_token(token_type);
             },
             '/' => {
@@ -176,9 +188,27 @@ impl Scanner {
         }
         // FIXME: duplicated with code in add_token
         let identifier = &self.source[self.start as usize..self.current as usize];
-        match self.keywords.get(identifier) {
-            None => self.add_token(TokenType::Identifier(identifier.to_string())),
-            Some(tokenType) => self.add_token(*tokenType)
+        match identifier {
+            // reserved keywords
+            "and" => self.add_token(TokenType::And),
+            "class" => self.add_token(TokenType::Class),
+            "else" => self.add_token(TokenType::Else),
+            "false" => self.add_token(TokenType::False),
+            "fun" => self.add_token(TokenType::Fun),
+            "for" => self.add_token(TokenType::For),
+            "if" => self.add_token(TokenType::If),
+            "nil" => self.add_token(TokenType::Nil),
+            "or" => self.add_token(TokenType::Or),
+            "print" => self.add_token(TokenType::Print),
+            "return" => self.add_token(TokenType::Return),
+            "super" => self.add_token(TokenType::Super),
+            "this" => self.add_token(TokenType::This),
+            "true" => self.add_token(TokenType::True),
+            "var" => self.add_token(TokenType::Var),
+            "while" => self.add_token(TokenType::While),
+            // bare identifier
+            _ => self.add_token(TokenType::Identifier(identifier.to_string()))
+
         }
     }
 }
@@ -396,8 +426,8 @@ mod scanner_tests {
         let scanner = Scanner::new(String::from("or nil"));
         let result = scanner.scan_tokens().unwrap();
         let expected = vec![
-            Token { typ: TokenType::Or, lexeme: String::from("Or"), line: 1 },
-            Token { typ: TokenType::Nil, lexeme: String::from("Nil"), line: 1 },
+            Token { typ: TokenType::Or, lexeme: String::from("or"), line: 1 },
+            Token { typ: TokenType::Nil, lexeme: String::from("nil"), line: 1 },
             Token { typ: TokenType::Eof, lexeme: String::from(""), line: 1 },
             ];
         assert_eq!(result, expected);
