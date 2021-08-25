@@ -157,7 +157,8 @@ impl Scanner {
         }
 
         let string_literal = &self.source[self.start as usize + 1..self.current as usize - 1];
-        self.add_token(TokenType::String(string_literal.to_string()));
+        let token_type = TokenType::String(string_literal.to_string());
+        self.add_token(token_type);
         // multi line string: need to increment the lines after recording the token, because we want the string to be recorded
         // with line where it started.
         for _ in 0..nb_lines {
@@ -207,7 +208,10 @@ impl Scanner {
             "var" => self.add_token(TokenType::Var),
             "while" => self.add_token(TokenType::While),
             // bare identifier
-            _ => self.add_token(TokenType::Identifier(identifier.to_string()))
+            _ => {
+                let token_type = TokenType::Identifier(identifier.to_string());
+                self.add_token(token_type);
+            }
 
         }
     }
