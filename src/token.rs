@@ -41,12 +41,12 @@ pub enum TokenType {
     Var,
     While,
     // EOF
-    Eof
+    Eof,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Token {
-    pub typ : TokenType,
+    pub typ: TokenType,
     pub lexeme: String,
-    pub line: u32
+    pub line: u32,
 }

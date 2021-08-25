@@ -30,7 +30,11 @@ impl Scanner {
         if self.errors.len() > 0 {
             return Err(self.errors);
         }
-        self.tokens.push(Token {typ: TokenType::Eof, lexeme: String::from(""), line: self.line});
+        self.tokens.push(Token {
+            typ: TokenType::Eof,
+            lexeme: String::from(""),
+            line: self.line,
+        });
         Ok(self.tokens)
     }
 
@@ -48,21 +52,37 @@ impl Scanner {
             ';' => self.add_token(TokenType::Semicolon),
             '*' => self.add_token(TokenType::Star),
             '!' => {
-                let token_type = if self.current_match('=') { TokenType::BangEqual } else { TokenType::Bang };
+                let token_type = if self.current_match('=') {
+                    TokenType::BangEqual
+                } else {
+                    TokenType::Bang
+                };
                 self.add_token(token_type);
-            },
+            }
             '=' => {
-                let token_type = if self.current_match('=') { TokenType::EqualEqual } else { TokenType::Equal };
+                let token_type = if self.current_match('=') {
+                    TokenType::EqualEqual
+                } else {
+                    TokenType::Equal
+                };
                 self.add_token(token_type);
-            },
+            }
             '>' => {
-                let token_type = if self.current_match('=') { TokenType::GreaterEqual } else { TokenType::Greater };
+                let token_type = if self.current_match('=') {
+                    TokenType::GreaterEqual
+                } else {
+                    TokenType::Greater
+                };
                 self.add_token(token_type);
-            },
+            }
             '<' => {
-                let token_type = if self.current_match('=') { TokenType::LessEqual } else { TokenType::Less };
+                let token_type = if self.current_match('=') {
+                    TokenType::LessEqual
+                } else {
+                    TokenType::Less
+                };
                 self.add_token(token_type);
-            },
+            }
             '/' => {
                 // handling comments
                 if self.current_match('/') {
@@ -72,7 +92,7 @@ impl Scanner {
                 } else {
                     self.add_token(TokenType::Slash);
                 }
-            },
+            }
             '"' => self.string(),
             ' ' => (),
             '\t' => (),
@@ -92,7 +112,11 @@ impl Scanner {
 
     fn add_token(&mut self, typ: TokenType) {
         let text = &self.source[self.start as usize..self.current as usize];
-        self.tokens.push(Token {typ, lexeme: text.to_string(), line: self.line});
+        self.tokens.push(Token {
+            typ,
+            lexeme: text.to_string(),
+            line: self.line,
+        });
     }
 
     fn peek(&self) -> char {
@@ -100,7 +124,10 @@ impl Scanner {
         if self.is_at_end() {
             return '\0';
         }
-        self.source.chars().nth(self.current as usize).expect("Couldn't peek character from source")
+        self.source
+            .chars()
+            .nth(self.current as usize)
+            .expect("Couldn't peek character from source")
     }
 
     fn peek_next(&self) -> char {
@@ -109,7 +136,10 @@ impl Scanner {
         if self.current as usize + 1 >= self.source.len() {
             return '\0';
         }
-        self.source.chars().nth(self.current as usize + 1).expect("Couldn't peek character from source")
+        self.source
+            .chars()
+            .nth(self.current as usize + 1)
+            .expect("Couldn't peek character from source")
     }
 
     fn advance(&mut self) -> char {
@@ -123,7 +153,10 @@ impl Scanner {
     }
 
     fn add_error(&mut self, message: String) {
-        self.errors.push(ScannerError { message, line: self.line});
+        self.errors.push(ScannerError {
+            message,
+            line: self.line,
+        });
     }
 
     fn increment_line(&mut self) {
@@ -136,7 +169,7 @@ impl Scanner {
         }
         let c = self.peek();
         if c != expected {
-            return false
+            return false;
         }
         self.current += 1;
         true
@@ -179,7 +212,9 @@ impl Scanner {
             }
         }
         let string_number = &self.source[self.start as usize..self.current as usize];
-        let literal_value = string_number.parse::<f64>().expect(&format!("Could not parse float: {}", string_number));
+        let literal_value = string_number
+            .parse::<f64>()
+            .expect(&format!("Could not parse float: {}", string_number));
         self.add_token(TokenType::Number(literal_value));
     }
 
@@ -212,7 +247,6 @@ impl Scanner {
                 let token_type = TokenType::Identifier(identifier.to_string());
                 self.add_token(token_type);
             }
-
         }
     }
 }
@@ -220,7 +254,7 @@ impl Scanner {
 #[derive(Debug, PartialEq)]
 pub struct ScannerError {
     message: String,
-    line: u32
+    line: u32,
 }
 
 #[cfg(test)]
@@ -231,7 +265,11 @@ mod scanner_tests {
     fn empty_program() {
         let scanner = Scanner::new(String::from(""));
         let result = scanner.scan_tokens().unwrap();
-        let expected = vec![Token { typ: TokenType::Eof, lexeme: String::from(""), line: 1 }];
+        let expected = vec![Token {
+            typ: TokenType::Eof,
+            lexeme: String::from(""),
+            line: 1,
+        }];
         assert_eq!(result, expected);
     }
 
@@ -240,10 +278,22 @@ mod scanner_tests {
         let scanner = Scanner::new(String::from("()"));
         let result = scanner.scan_tokens().unwrap();
         let expected = vec![
-            Token { typ: TokenType::LeftParen, lexeme: String::from("("), line: 1 },
-            Token { typ: TokenType::RightParen, lexeme: String::from(")"), line: 1 },
-            Token { typ: TokenType::Eof, lexeme: String::from(""), line: 1 },
-            ];
+            Token {
+                typ: TokenType::LeftParen,
+                lexeme: String::from("("),
+                line: 1,
+            },
+            Token {
+                typ: TokenType::RightParen,
+                lexeme: String::from(")"),
+                line: 1,
+            },
+            Token {
+                typ: TokenType::Eof,
+                lexeme: String::from(""),
+                line: 1,
+            },
+        ];
         assert_eq!(result, expected);
     }
 
@@ -252,12 +302,32 @@ mod scanner_tests {
         let scanner = Scanner::new(String::from("()\n()"));
         let result = scanner.scan_tokens().unwrap();
         let expected = vec![
-            Token { typ: TokenType::LeftParen, lexeme: String::from("("), line: 1 },
-            Token { typ: TokenType::RightParen, lexeme: String::from(")"), line: 1 },
-            Token { typ: TokenType::LeftParen, lexeme: String::from("("), line: 2 },
-            Token { typ: TokenType::RightParen, lexeme: String::from(")"), line: 2 },
-            Token { typ: TokenType::Eof, lexeme: String::from(""), line: 2 },
-            ];
+            Token {
+                typ: TokenType::LeftParen,
+                lexeme: String::from("("),
+                line: 1,
+            },
+            Token {
+                typ: TokenType::RightParen,
+                lexeme: String::from(")"),
+                line: 1,
+            },
+            Token {
+                typ: TokenType::LeftParen,
+                lexeme: String::from("("),
+                line: 2,
+            },
+            Token {
+                typ: TokenType::RightParen,
+                lexeme: String::from(")"),
+                line: 2,
+            },
+            Token {
+                typ: TokenType::Eof,
+                lexeme: String::from(""),
+                line: 2,
+            },
+        ];
         assert_eq!(result, expected);
     }
 
@@ -266,10 +336,22 @@ mod scanner_tests {
         let scanner = Scanner::new(String::from("// this is a comment\n()"));
         let result = scanner.scan_tokens().unwrap();
         let expected = vec![
-            Token { typ: TokenType::LeftParen, lexeme: String::from("("), line: 2 },
-            Token { typ: TokenType::RightParen, lexeme: String::from(")"), line: 2 },
-            Token { typ: TokenType::Eof, lexeme: String::from(""), line: 2 },
-            ];
+            Token {
+                typ: TokenType::LeftParen,
+                lexeme: String::from("("),
+                line: 2,
+            },
+            Token {
+                typ: TokenType::RightParen,
+                lexeme: String::from(")"),
+                line: 2,
+            },
+            Token {
+                typ: TokenType::Eof,
+                lexeme: String::from(""),
+                line: 2,
+            },
+        ];
         assert_eq!(result, expected);
     }
 
@@ -278,12 +360,32 @@ mod scanner_tests {
         let scanner = Scanner::new(String::from("!()!="));
         let result = scanner.scan_tokens().unwrap();
         let expected = vec![
-            Token { typ: TokenType::Bang, lexeme: String::from("!"), line: 1 },
-            Token { typ: TokenType::LeftParen, lexeme: String::from("("), line: 1 },
-            Token { typ: TokenType::RightParen, lexeme: String::from(")"), line: 1 },
-            Token { typ: TokenType::BangEqual, lexeme: String::from("!="), line: 1 },
-            Token { typ: TokenType::Eof, lexeme: String::from(""), line: 1 },
-            ];
+            Token {
+                typ: TokenType::Bang,
+                lexeme: String::from("!"),
+                line: 1,
+            },
+            Token {
+                typ: TokenType::LeftParen,
+                lexeme: String::from("("),
+                line: 1,
+            },
+            Token {
+                typ: TokenType::RightParen,
+                lexeme: String::from(")"),
+                line: 1,
+            },
+            Token {
+                typ: TokenType::BangEqual,
+                lexeme: String::from("!="),
+                line: 1,
+            },
+            Token {
+                typ: TokenType::Eof,
+                lexeme: String::from(""),
+                line: 1,
+            },
+        ];
         assert_eq!(result, expected);
     }
 
@@ -292,10 +394,22 @@ mod scanner_tests {
         let scanner = Scanner::new(String::from("( \t\r)"));
         let result = scanner.scan_tokens().unwrap();
         let expected = vec![
-            Token { typ: TokenType::LeftParen, lexeme: String::from("("), line: 1 },
-            Token { typ: TokenType::RightParen, lexeme: String::from(")"), line: 1 },
-            Token { typ: TokenType::Eof, lexeme: String::from(""), line: 1 },
-            ];
+            Token {
+                typ: TokenType::LeftParen,
+                lexeme: String::from("("),
+                line: 1,
+            },
+            Token {
+                typ: TokenType::RightParen,
+                lexeme: String::from(")"),
+                line: 1,
+            },
+            Token {
+                typ: TokenType::Eof,
+                lexeme: String::from(""),
+                line: 1,
+            },
+        ];
         assert_eq!(result, expected);
     }
 
@@ -304,9 +418,17 @@ mod scanner_tests {
         let scanner = Scanner::new(String::from("\"\""));
         let result = scanner.scan_tokens().unwrap();
         let expected = vec![
-            Token { typ: TokenType::String(String::from("")), lexeme: String::from("\"\""), line: 1 },
-            Token { typ: TokenType::Eof, lexeme: String::from(""), line: 1 },
-            ];
+            Token {
+                typ: TokenType::String(String::from("")),
+                lexeme: String::from("\"\""),
+                line: 1,
+            },
+            Token {
+                typ: TokenType::Eof,
+                lexeme: String::from(""),
+                line: 1,
+            },
+        ];
         assert_eq!(result, expected);
     }
 
@@ -315,9 +437,17 @@ mod scanner_tests {
         let scanner = Scanner::new(String::from("\"hello world\""));
         let result = scanner.scan_tokens().unwrap();
         let expected = vec![
-            Token { typ: TokenType::String(String::from("hello world")), lexeme: String::from("\"hello world\""), line: 1 },
-            Token { typ: TokenType::Eof, lexeme: String::from(""), line: 1 },
-            ];
+            Token {
+                typ: TokenType::String(String::from("hello world")),
+                lexeme: String::from("\"hello world\""),
+                line: 1,
+            },
+            Token {
+                typ: TokenType::Eof,
+                lexeme: String::from(""),
+                line: 1,
+            },
+        ];
         assert_eq!(result, expected);
     }
 
@@ -325,7 +455,10 @@ mod scanner_tests {
     fn unterminated_string_should_fail() {
         let scanner = Scanner::new(String::from("\"hello world"));
         let result = scanner.scan_tokens();
-        let expected = Err(vec![ScannerError { message: String::from("Unterminated string."), line: 1}]);
+        let expected = Err(vec![ScannerError {
+            message: String::from("Unterminated string."),
+            line: 1,
+        }]);
         assert_eq!(result, expected);
     }
 
@@ -334,11 +467,27 @@ mod scanner_tests {
         let scanner = Scanner::new(String::from("(\"hello world\")"));
         let result = scanner.scan_tokens().unwrap();
         let expected = vec![
-            Token { typ: TokenType::LeftParen, lexeme: String::from("("), line: 1 },
-            Token { typ: TokenType::String(String::from("hello world")), lexeme: String::from("\"hello world\""), line: 1 },
-            Token { typ: TokenType::RightParen, lexeme: String::from(")"), line: 1 },
-            Token { typ: TokenType::Eof, lexeme: String::from(""), line: 1 },
-            ];
+            Token {
+                typ: TokenType::LeftParen,
+                lexeme: String::from("("),
+                line: 1,
+            },
+            Token {
+                typ: TokenType::String(String::from("hello world")),
+                lexeme: String::from("\"hello world\""),
+                line: 1,
+            },
+            Token {
+                typ: TokenType::RightParen,
+                lexeme: String::from(")"),
+                line: 1,
+            },
+            Token {
+                typ: TokenType::Eof,
+                lexeme: String::from(""),
+                line: 1,
+            },
+        ];
         assert_eq!(result, expected);
     }
 
@@ -347,11 +496,27 @@ mod scanner_tests {
         let scanner = Scanner::new(String::from("(\"hello \nworld\")"));
         let result = scanner.scan_tokens().unwrap();
         let expected = vec![
-            Token { typ: TokenType::LeftParen, lexeme: String::from("("), line: 1 },
-            Token { typ: TokenType::String(String::from("hello \nworld")), lexeme: String::from("\"hello \nworld\""), line: 1 },
-            Token { typ: TokenType::RightParen, lexeme: String::from(")"), line: 2 },
-            Token { typ: TokenType::Eof, lexeme: String::from(""), line: 2 },
-            ];
+            Token {
+                typ: TokenType::LeftParen,
+                lexeme: String::from("("),
+                line: 1,
+            },
+            Token {
+                typ: TokenType::String(String::from("hello \nworld")),
+                lexeme: String::from("\"hello \nworld\""),
+                line: 1,
+            },
+            Token {
+                typ: TokenType::RightParen,
+                lexeme: String::from(")"),
+                line: 2,
+            },
+            Token {
+                typ: TokenType::Eof,
+                lexeme: String::from(""),
+                line: 2,
+            },
+        ];
         assert_eq!(result, expected);
     }
 
@@ -360,9 +525,17 @@ mod scanner_tests {
         let scanner = Scanner::new(String::from("12"));
         let result = scanner.scan_tokens().unwrap();
         let expected = vec![
-            Token { typ: TokenType::Number(12.0), lexeme: String::from("12"), line: 1 },
-            Token { typ: TokenType::Eof, lexeme: String::from(""), line: 1 },
-            ];
+            Token {
+                typ: TokenType::Number(12.0),
+                lexeme: String::from("12"),
+                line: 1,
+            },
+            Token {
+                typ: TokenType::Eof,
+                lexeme: String::from(""),
+                line: 1,
+            },
+        ];
         assert_eq!(result, expected);
     }
 
@@ -371,9 +544,17 @@ mod scanner_tests {
         let scanner = Scanner::new(String::from("7.8"));
         let result = scanner.scan_tokens().unwrap();
         let expected = vec![
-            Token { typ: TokenType::Number(7.8), lexeme: String::from("7.8"), line: 1 },
-            Token { typ: TokenType::Eof, lexeme: String::from(""), line: 1 },
-            ];
+            Token {
+                typ: TokenType::Number(7.8),
+                lexeme: String::from("7.8"),
+                line: 1,
+            },
+            Token {
+                typ: TokenType::Eof,
+                lexeme: String::from(""),
+                line: 1,
+            },
+        ];
         assert_eq!(result, expected);
     }
 
@@ -382,12 +563,32 @@ mod scanner_tests {
         let scanner = Scanner::new(String::from("7.8.()"));
         let result = scanner.scan_tokens().unwrap();
         let expected = vec![
-            Token { typ: TokenType::Number(7.8), lexeme: String::from("7.8"), line: 1 },
-            Token { typ: TokenType::Dot, lexeme: String::from("."), line: 1 },
-            Token { typ: TokenType::LeftParen, lexeme: String::from("("), line: 1 },
-            Token { typ: TokenType::RightParen, lexeme: String::from(")"), line: 1 },
-            Token { typ: TokenType::Eof, lexeme: String::from(""), line: 1 },
-            ];
+            Token {
+                typ: TokenType::Number(7.8),
+                lexeme: String::from("7.8"),
+                line: 1,
+            },
+            Token {
+                typ: TokenType::Dot,
+                lexeme: String::from("."),
+                line: 1,
+            },
+            Token {
+                typ: TokenType::LeftParen,
+                lexeme: String::from("("),
+                line: 1,
+            },
+            Token {
+                typ: TokenType::RightParen,
+                lexeme: String::from(")"),
+                line: 1,
+            },
+            Token {
+                typ: TokenType::Eof,
+                lexeme: String::from(""),
+                line: 1,
+            },
+        ];
         assert_eq!(result, expected);
     }
 
@@ -396,10 +597,22 @@ mod scanner_tests {
         let scanner = Scanner::new(String::from("14."));
         let result = scanner.scan_tokens().unwrap();
         let expected = vec![
-            Token { typ: TokenType::Number(14.0), lexeme: String::from("14"), line: 1 },
-            Token { typ: TokenType::Dot, lexeme: String::from("."), line: 1 },
-            Token { typ: TokenType::Eof, lexeme: String::from(""), line: 1 },
-            ];
+            Token {
+                typ: TokenType::Number(14.0),
+                lexeme: String::from("14"),
+                line: 1,
+            },
+            Token {
+                typ: TokenType::Dot,
+                lexeme: String::from("."),
+                line: 1,
+            },
+            Token {
+                typ: TokenType::Eof,
+                lexeme: String::from(""),
+                line: 1,
+            },
+        ];
         assert_eq!(result, expected);
     }
 
@@ -408,9 +621,17 @@ mod scanner_tests {
         let scanner = Scanner::new(String::from("orchid"));
         let result = scanner.scan_tokens().unwrap();
         let expected = vec![
-            Token { typ: TokenType::Identifier(String::from("orchid")), lexeme: String::from("orchid"), line: 1 },
-            Token { typ: TokenType::Eof, lexeme: String::from(""), line: 1 },
-            ];
+            Token {
+                typ: TokenType::Identifier(String::from("orchid")),
+                lexeme: String::from("orchid"),
+                line: 1,
+            },
+            Token {
+                typ: TokenType::Eof,
+                lexeme: String::from(""),
+                line: 1,
+            },
+        ];
         assert_eq!(result, expected);
     }
 
@@ -419,9 +640,17 @@ mod scanner_tests {
         let scanner = Scanner::new(String::from("orchid7"));
         let result = scanner.scan_tokens().unwrap();
         let expected = vec![
-            Token { typ: TokenType::Identifier(String::from("orchid7")), lexeme: String::from("orchid7"), line: 1 },
-            Token { typ: TokenType::Eof, lexeme: String::from(""), line: 1 },
-            ];
+            Token {
+                typ: TokenType::Identifier(String::from("orchid7")),
+                lexeme: String::from("orchid7"),
+                line: 1,
+            },
+            Token {
+                typ: TokenType::Eof,
+                lexeme: String::from(""),
+                line: 1,
+            },
+        ];
         assert_eq!(result, expected);
     }
 
@@ -430,10 +659,22 @@ mod scanner_tests {
         let scanner = Scanner::new(String::from("or nil"));
         let result = scanner.scan_tokens().unwrap();
         let expected = vec![
-            Token { typ: TokenType::Or, lexeme: String::from("or"), line: 1 },
-            Token { typ: TokenType::Nil, lexeme: String::from("nil"), line: 1 },
-            Token { typ: TokenType::Eof, lexeme: String::from(""), line: 1 },
-            ];
+            Token {
+                typ: TokenType::Or,
+                lexeme: String::from("or"),
+                line: 1,
+            },
+            Token {
+                typ: TokenType::Nil,
+                lexeme: String::from("nil"),
+                line: 1,
+            },
+            Token {
+                typ: TokenType::Eof,
+                lexeme: String::from(""),
+                line: 1,
+            },
+        ];
         assert_eq!(result, expected);
     }
 }

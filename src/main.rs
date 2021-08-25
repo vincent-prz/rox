@@ -1,12 +1,12 @@
 mod ast;
 mod scanner;
 mod token;
+use scanner::Scanner;
 use std::env;
+use std::fs;
 use std::io;
 use std::io::Write;
-use std::fs;
 use std::process::exit;
-use scanner::Scanner;
 
 fn run(content: String) {
     let scanner = Scanner::new(content);
@@ -26,17 +26,19 @@ fn run(content: String) {
 }
 
 fn run_file(filename: &str) {
-    let contents = fs::read_to_string(filename)
-        .expect("Something went wrong reading the file");
+    let contents = fs::read_to_string(filename).expect("Something went wrong reading the file");
     run(contents);
 }
 
 fn run_prompt() {
     loop {
         print!("> ");
-        io::stdout().flush().expect("Somethig went wrong when flushing IO");
+        io::stdout()
+            .flush()
+            .expect("Somethig went wrong when flushing IO");
         let mut line = String::new();
-        io::stdin().read_line(&mut line)
+        io::stdin()
+            .read_line(&mut line)
             .expect("Something went wrong when reading the line");
         if line == "\n" {
             break;

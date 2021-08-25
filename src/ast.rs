@@ -58,20 +58,36 @@ fn pretty_print_unary(unary: &Unary) -> String {
 }
 
 fn pretty_print_binary(binary: &Binary) -> String {
-    format!("({} {} {})", binary.operator.lexeme, pretty_print(&binary.left), pretty_print(&binary.right))
+    format!(
+        "({} {} {})",
+        binary.operator.lexeme,
+        pretty_print(&binary.left),
+        pretty_print(&binary.right)
+    )
 }
 
 #[test]
 fn test_pretty_printer() {
-    let minus_op = Token { typ: TokenType::Minus, lexeme: "-".to_string(), line: 1 };
-    let star_op = Token { typ: TokenType::Star, lexeme: "*".to_string(), line: 1 };
-    let expression = Expr::Binary(
-        Binary {
-            left: Box::new(Expr::Unary(Unary { operator: minus_op, right: Box::new(Expr::Literal(Literal::Number(123.0)))})),
-            operator: star_op,
-            right: Box::new(Expr::Grouping(Grouping { expression: Box::new(Expr::Literal(Literal::Number(45.67)))})),
-        }
-    );
+    let minus_op = Token {
+        typ: TokenType::Minus,
+        lexeme: "-".to_string(),
+        line: 1,
+    };
+    let star_op = Token {
+        typ: TokenType::Star,
+        lexeme: "*".to_string(),
+        line: 1,
+    };
+    let expression = Expr::Binary(Binary {
+        left: Box::new(Expr::Unary(Unary {
+            operator: minus_op,
+            right: Box::new(Expr::Literal(Literal::Number(123.0))),
+        })),
+        operator: star_op,
+        right: Box::new(Expr::Grouping(Grouping {
+            expression: Box::new(Expr::Literal(Literal::Number(45.67))),
+        })),
+    });
     let result = pretty_print(&expression);
     assert_eq!(result, "(* (- 123) (group 45.67))");
 }
