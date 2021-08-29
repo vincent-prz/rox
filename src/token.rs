@@ -1,4 +1,4 @@
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum TokenType {
     LeftParen,
     RightParen,
@@ -22,7 +22,7 @@ pub enum TokenType {
     // literals
     Identifier(String),
     Number(f64),
-    String(String),
+    Str(String),
     // keywords
     And,
     Class,
@@ -44,7 +44,7 @@ pub enum TokenType {
     Eof,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Token {
     pub typ: TokenType,
     pub lexeme: String,

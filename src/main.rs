@@ -10,18 +10,22 @@ use std::process::exit;
 
 fn run(content: String) {
     let scanner = Scanner::new(content);
-    match scanner.scan_tokens() {
+    let tokens = match scanner.scan_tokens() {
         Err(errors) => {
             for err in errors {
                 println!("{:?}", err);
             }
             exit(65);
         }
-        Ok(tokens) => {
-            for token in tokens {
-                println!("{:?}", token);
-            }
+        Ok(tokens) => tokens,
+    };
+    let mut parser = ast::parser::Parser::new(tokens);
+    match parser.parse() {
+        Err(error) => {
+            println!("{:?}", error);
+            exit(65);
         }
+        Ok(expr) => println!("{}", ast::printer::pretty_print(&expr)),
     }
 }
 

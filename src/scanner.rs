@@ -190,7 +190,7 @@ impl Scanner {
         }
 
         let string_literal = &self.source[self.start as usize + 1..self.current as usize - 1];
-        let token_type = TokenType::String(string_literal.to_string());
+        let token_type = TokenType::Str(string_literal.to_string());
         self.add_token(token_type);
         // multi line string: need to increment the lines after recording the token, because we want the string to be recorded
         // with line where it started.
@@ -419,7 +419,7 @@ mod scanner_tests {
         let result = scanner.scan_tokens().unwrap();
         let expected = vec![
             Token {
-                typ: TokenType::String(String::from("")),
+                typ: TokenType::Str(String::from("")),
                 lexeme: String::from("\"\""),
                 line: 1,
             },
@@ -438,7 +438,7 @@ mod scanner_tests {
         let result = scanner.scan_tokens().unwrap();
         let expected = vec![
             Token {
-                typ: TokenType::String(String::from("hello world")),
+                typ: TokenType::Str(String::from("hello world")),
                 lexeme: String::from("\"hello world\""),
                 line: 1,
             },
@@ -473,7 +473,7 @@ mod scanner_tests {
                 line: 1,
             },
             Token {
-                typ: TokenType::String(String::from("hello world")),
+                typ: TokenType::Str(String::from("hello world")),
                 lexeme: String::from("\"hello world\""),
                 line: 1,
             },
@@ -502,7 +502,7 @@ mod scanner_tests {
                 line: 1,
             },
             Token {
-                typ: TokenType::String(String::from("hello \nworld")),
+                typ: TokenType::Str(String::from("hello \nworld")),
                 lexeme: String::from("\"hello \nworld\""),
                 line: 1,
             },

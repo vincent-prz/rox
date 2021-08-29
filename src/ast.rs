@@ -1,4 +1,4 @@
-use crate::token::{Token, TokenType};
+use crate::token::{Token, TokenType, TokenType::*};
 
 pub enum Expr {
     Literal(Literal),
@@ -9,7 +9,7 @@ pub enum Expr {
 
 enum Literal {
     Number(f64),
-    String(String),
+    Str(String),
     True,
     False,
     Nil,
@@ -30,7 +30,7 @@ struct Binary {
     right: Box<Expr>,
 }
 
-mod ast_printer {
+pub mod printer {
     use super::*;
 
     pub fn pretty_print(expr: &Expr) -> String {
@@ -45,7 +45,7 @@ mod ast_printer {
     fn pretty_print_litteral(literal: &Literal) -> String {
         match literal {
             Literal::Number(n) => n.to_string(),
-            Literal::String(s) => s.clone(),
+            Literal::Str(s) => s.clone(),
             Literal::True => "true".to_string(),
             Literal::False => "false".to_string(),
             Literal::Nil => "nil".to_string(),
@@ -92,6 +92,163 @@ fn test_pretty_printer() {
             expression: Box::new(Expr::Literal(Literal::Number(45.67))),
         })),
     });
-    let result = ast_printer::pretty_print(&expression);
+    let result = printer::pretty_print(&expression);
     assert_eq!(result, "(* (- 123) (group 45.67))");
+}
+
+pub mod parser {
+    use super::*;
+
+    /*
+    expression     → equality ;
+    equality       → comparison ( ( "!=" | "==" ) comparison )* ;
+    comparison     → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
+    term           → factor ( ( "-" | "+" ) factor )* ;
+    factor         → unary ( ( "/" | "*" ) unary )* ;
+    unary          → ( "!" | "-" ) unary
+                | primary ;
+    primary        → NUMBER | STRING | "true" | "false" | "nil"
+                | "(" expression ")" ;
+
+    */
+    pub struct Parser {
+        tokens: Vec<Token>,
+        current: usize,
+    }
+
+    #[derive(Debug)]
+    pub struct ParseError {
+        pub message: String,
+        pub token: Token,
+    }
+
+    impl Parser {
+        pub fn new(tokens: Vec<Token>) -> Self {
+            Self { tokens, current: 0 }
+        }
+
+        pub fn parse(&mut self) -> Result<Expr, ParseError> {
+            self.expression()
+        }
+
+        fn peek(&self) -> &Token {
+            &self.tokens[self.current]
+        }
+
+        fn is_at_end(&self) -> bool {
+            self.peek().typ == TokenType::Eof
+        }
+
+        fn check(&self, typ: &TokenType) -> bool {
+            if self.is_at_end() {
+                return false;
+            }
+            &self.peek().typ == typ
+        }
+
+        fn advance(&mut self) -> Token {
+            if !self.is_at_end() {
+                self.current += 1;
+            }
+            self.previous()
+        }
+
+        fn matches(&mut self, types: &Vec<TokenType>) -> bool {
+            for typ in types {
+                if self.check(typ) {
+                    self.advance();
+                    return true;
+                }
+            }
+            false
+        }
+
+        fn previous(&mut self) -> Token {
+            self.tokens[self.current - 1].clone()
+        }
+
+        fn expression(&mut self) -> Result<Expr, ParseError> {
+            self.equality()
+        }
+
+        /*
+         * Parse something of the form `<rule>((<operators>)<rule>)*`
+         */
+        fn parse_left_associative_binary_op(
+            &mut self,
+            rule: &dyn Fn(&mut Self) -> Result<Expr, ParseError>,
+            operators: &Vec<TokenType>,
+        ) -> Result<Expr, ParseError> {
+            let mut expr = rule(self)?;
+            while self.matches(operators) {
+                let operator = self.previous();
+                let right = rule(self)?;
+                expr = Expr::Binary(Binary {
+                    left: Box::new(expr),
+                    operator,
+                    right: Box::new(right),
+                });
+            }
+            Ok(expr)
+        }
+
+        fn equality(&mut self) -> Result<Expr, ParseError> {
+            self.parse_left_associative_binary_op(&Parser::comparison, &vec![BangEqual, EqualEqual])
+        }
+
+        fn comparison(&mut self) -> Result<Expr, ParseError> {
+            self.parse_left_associative_binary_op(
+                &Parser::term,
+                &vec![Less, LessEqual, Greater, GreaterEqual],
+            )
+        }
+
+        fn term(&mut self) -> Result<Expr, ParseError> {
+            self.parse_left_associative_binary_op(&Parser::factor, &vec![Minus, Plus])
+        }
+
+        fn factor(&mut self) -> Result<Expr, ParseError> {
+            self.parse_left_associative_binary_op(&Parser::unary, &vec![Slash, Star])
+        }
+
+        fn unary(&mut self) -> Result<Expr, ParseError> {
+            if self.matches(&vec![Minus, Bang]) {
+                let operator = self.previous();
+                let right = self.unary()?;
+                return Ok(Expr::Unary(Unary {
+                    operator,
+                    right: Box::new(right),
+                }));
+            }
+            self.primary()
+        }
+
+        fn primary(&mut self) -> Result<Expr, ParseError> {
+            let token = self.advance();
+            match token.typ {
+                Str(s) => Ok(Expr::Literal(Literal::Str(s))),
+                Number(x) => Ok(Expr::Literal(Literal::Number(x))),
+                True => Ok(Expr::Literal(Literal::True)),
+                False => Ok(Expr::Literal(Literal::False)),
+                Nil => Ok(Expr::Literal(Literal::Nil)),
+                LeftParen => {
+                    let expr = self.expression()?;
+                    let next_token = self.advance();
+                    if next_token.typ != RightParen {
+                        return Err(ParseError {
+                            message: "Expect ')' after expression.".to_string(),
+                            token: next_token,
+                        });
+                    }
+                    Ok(Expr::Grouping(Grouping {
+                        expression: (Box::new(expr)),
+                    }))
+                }
+                _ => Err(ParseError {
+                    message: "Expect expression".to_string(),
+                    token,
+                }),
+            }
+        }
+    }
 }
