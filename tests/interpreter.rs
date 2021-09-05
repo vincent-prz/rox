@@ -1,11 +1,13 @@
 // test scanning + parsing + evaluating altogether
 use rox::ast;
-use rox::evaluator::{evaluate, Value, RuntimeError};
+use rox::evaluator::{evaluate, RuntimeError, Value};
 use rox::scanner::Scanner;
 
 fn interpret(s: &str) -> Result<Value, RuntimeError> {
     let scanner = Scanner::new(s.to_string());
-    let tokens = scanner.scan_tokens().expect("Unexpected failure of scanning");
+    let tokens = scanner
+        .scan_tokens()
+        .expect("Unexpected failure of scanning");
     let mut parser = ast::parser::Parser::new(tokens);
     let expr = parser.parse().expect("Unexpected failure of parsing");
     evaluate(&expr)
@@ -108,7 +110,10 @@ fn computation_with_parens() {
 
 #[test]
 fn add_strings() {
-    assert_eq!(interpret("\"hello \" + \"world!\""), Ok(Value::Str("hello world!".to_string())));
+    assert_eq!(
+        interpret("\"hello \" + \"world!\""),
+        Ok(Value::Str("hello world!".to_string()))
+    );
 }
 
 #[test]

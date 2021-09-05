@@ -1,6 +1,6 @@
-use std::fmt;
+use crate::ast::{Binary, Expr, Literal, Unary};
 use crate::token::{Token, TokenType};
-use crate::ast::{Expr, Literal, Unary, Binary};
+use std::fmt;
 
 #[derive(Debug, PartialEq)]
 pub enum Value {
@@ -57,11 +57,9 @@ fn evaluate_literal(lit: &Literal) -> Result<Value, RuntimeError> {
 fn evaluate_unary(unary: &Unary) -> Result<Value, RuntimeError> {
     let right_val = evaluate(&unary.right)?;
     match unary.operator.typ {
-        TokenType::Minus => {
-            match right_val {
-                Value::Number(n) => Ok(Value::Number(-n)),
-                _ => panic!(),
-            }
+        TokenType::Minus => match right_val {
+            Value::Number(n) => Ok(Value::Number(-n)),
+            _ => panic!(),
         },
         TokenType::Bang => Ok(bool_to_val(!is_truthy(&right_val))),
         _ => panic!(),
@@ -72,30 +70,22 @@ fn evaluate_binary(binary: &Binary) -> Result<Value, RuntimeError> {
     let left_val = evaluate(&binary.left)?;
     let right_val = evaluate(&binary.right)?;
     match binary.operator.typ {
-        TokenType::Plus => {
-            match (left_val, right_val) {
-                (Value::Number(x), Value::Number(y)) => Ok(Value::Number(x + y)),
-                (Value::Str(x), Value::Str(y)) => Ok(Value::Str(format!("{}{}",x , y))),
-                _ => panic!(),
-            }
+        TokenType::Plus => match (left_val, right_val) {
+            (Value::Number(x), Value::Number(y)) => Ok(Value::Number(x + y)),
+            (Value::Str(x), Value::Str(y)) => Ok(Value::Str(format!("{}{}", x, y))),
+            _ => panic!(),
         },
-        TokenType::Minus => {
-            match (left_val, right_val) {
-                (Value::Number(x), Value::Number(y)) => Ok(Value::Number(x - y)),
-                _ => panic!(),
-            }
+        TokenType::Minus => match (left_val, right_val) {
+            (Value::Number(x), Value::Number(y)) => Ok(Value::Number(x - y)),
+            _ => panic!(),
         },
-        TokenType::Star => {
-            match (left_val, right_val) {
-                (Value::Number(x), Value::Number(y)) => Ok(Value::Number(x * y)),
-                _ => panic!(),
-            }
+        TokenType::Star => match (left_val, right_val) {
+            (Value::Number(x), Value::Number(y)) => Ok(Value::Number(x * y)),
+            _ => panic!(),
         },
-        TokenType::Slash => {
-            match (left_val, right_val) {
-                (Value::Number(x), Value::Number(y)) => Ok(Value::Number(x / y)),
-                _ => panic!(),
-            }
+        TokenType::Slash => match (left_val, right_val) {
+            (Value::Number(x), Value::Number(y)) => Ok(Value::Number(x / y)),
+            _ => panic!(),
         },
         TokenType::EqualEqual => Ok(bool_to_val(left_val == right_val)),
         TokenType::BangEqual => Ok(bool_to_val(left_val != right_val)),

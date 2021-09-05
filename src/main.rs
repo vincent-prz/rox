@@ -23,12 +23,12 @@ fn run(content: String) {
         Err(error) => {
             println!("{:?}", error);
             exit(65);
-        },
+        }
         Ok(expr) => expr,
     };
     match evaluate(&expr) {
         Ok(value) => println!("{}", value),
-        Err(_) => panic!()
+        Err(_) => panic!(),
     }
 }
 
