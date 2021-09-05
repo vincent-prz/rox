@@ -1,7 +1,6 @@
-mod ast;
-mod scanner;
-mod token;
-use scanner::Scanner;
+use rox::ast;
+use rox::evaluator::evaluate;
+use rox::scanner::Scanner;
 use std::env;
 use std::fs;
 use std::io;
@@ -20,12 +19,16 @@ fn run(content: String) {
         Ok(tokens) => tokens,
     };
     let mut parser = ast::parser::Parser::new(tokens);
-    match parser.parse() {
+    let expr = match parser.parse() {
         Err(error) => {
             println!("{:?}", error);
             exit(65);
-        }
-        Ok(expr) => println!("{}", ast::printer::pretty_print(&expr)),
+        },
+        Ok(expr) => expr,
+    };
+    match evaluate(&expr) {
+        Ok(value) => println!("{}", value),
+        Err(_) => panic!()
     }
 }
 

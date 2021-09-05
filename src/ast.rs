@@ -7,7 +7,7 @@ pub enum Expr {
     Grouping(Grouping),
 }
 
-enum Literal {
+pub enum Literal {
     Number(f64),
     Str(String),
     True,
@@ -15,19 +15,19 @@ enum Literal {
     Nil,
 }
 
-struct Grouping {
-    expression: Box<Expr>,
+pub struct Grouping {
+    pub expression: Box<Expr>,
 }
 
-struct Unary {
-    operator: Token,
-    right: Box<Expr>,
+pub struct Unary {
+    pub operator: Token,
+    pub right: Box<Expr>,
 }
 
-struct Binary {
-    left: Box<Expr>,
-    operator: Token,
-    right: Box<Expr>,
+pub struct Binary {
+    pub left: Box<Expr>,
+    pub operator: Token,
+    pub right: Box<Expr>,
 }
 
 pub mod printer {
