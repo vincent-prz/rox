@@ -161,3 +161,27 @@ fn boolean_inequality() {
 fn nil_inequality() {
     assert_eq!(interpret("nil != nil"), Ok(Value::False));
 }
+
+#[test]
+fn lte() {
+    assert_eq!(interpret("2 <= 1"), Ok(Value::False));
+    assert_eq!(interpret("2 <= 2"), Ok(Value::True));
+}
+
+#[test]
+fn lt() {
+    assert_eq!(interpret("2 < 2"), Ok(Value::False));
+    assert_eq!(interpret("2 < 3"), Ok(Value::True));
+}
+
+#[test]
+fn gte() {
+    assert_eq!(interpret("2 >= 1"), Ok(Value::True));
+    assert_eq!(interpret("2 >= 3"), Ok(Value::False));
+}
+
+#[test]
+fn gt() {
+    assert_eq!(interpret("2 > 1"), Ok(Value::True));
+    assert_eq!(interpret("2 > 2"), Ok(Value::False));
+}

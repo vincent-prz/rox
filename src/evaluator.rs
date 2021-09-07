@@ -89,6 +89,22 @@ fn evaluate_binary(binary: &Binary) -> Result<Value, RuntimeError> {
         },
         TokenType::EqualEqual => Ok(bool_to_val(left_val == right_val)),
         TokenType::BangEqual => Ok(bool_to_val(left_val != right_val)),
+        TokenType::LessEqual => match (left_val, right_val) {
+            (Value::Number(x), Value::Number(y)) => Ok(bool_to_val(x <= y)),
+            _ => panic!(),
+        },
+        TokenType::Less => match (left_val, right_val) {
+            (Value::Number(x), Value::Number(y)) => Ok(bool_to_val(x < y)),
+            _ => panic!(),
+        },
+        TokenType::GreaterEqual => match (left_val, right_val) {
+            (Value::Number(x), Value::Number(y)) => Ok(bool_to_val(x >= y)),
+            _ => panic!(),
+        },
+        TokenType::Greater => match (left_val, right_val) {
+            (Value::Number(x), Value::Number(y)) => Ok(bool_to_val(x > y)),
+            _ => panic!(),
+        },
         _ => panic!(),
     }
 }
