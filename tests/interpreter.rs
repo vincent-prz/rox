@@ -185,3 +185,147 @@ fn gt() {
     assert_eq!(interpret("2 > 1"), Ok(Value::True));
     assert_eq!(interpret("2 > 2"), Ok(Value::False));
 }
+
+#[test]
+fn minus_not_number_should_fail() {
+    assert_eq!(
+        interpret("-true").unwrap_err().message,
+        "Operand must be a number."
+    );
+    assert_eq!(
+        interpret("-nil").unwrap_err().message,
+        "Operand must be a number."
+    );
+    assert_eq!(
+        interpret("-\"hello\"").unwrap_err().message,
+        "Operand must be a number."
+    );
+}
+
+#[test]
+fn not_number_substraction_should_fail() {
+    assert_eq!(
+        interpret("1 - true").unwrap_err().message,
+        "Operands must be a number."
+    );
+    assert_eq!(
+        interpret("nil - false").unwrap_err().message,
+        "Operands must be a number."
+    );
+    assert_eq!(
+        interpret("\"hello\" - 2").unwrap_err().message,
+        "Operands must be a number."
+    );
+}
+
+#[test]
+fn not_number_multiplication_should_fail() {
+    assert_eq!(
+        interpret("1 * true").unwrap_err().message,
+        "Operands must be a number."
+    );
+    assert_eq!(
+        interpret("nil * false").unwrap_err().message,
+        "Operands must be a number."
+    );
+    assert_eq!(
+        interpret("\"hello\" * 2").unwrap_err().message,
+        "Operands must be a number."
+    );
+}
+
+#[test]
+fn not_number_division_should_fail() {
+    assert_eq!(
+        interpret("1 / true").unwrap_err().message,
+        "Operands must be a number."
+    );
+    assert_eq!(
+        interpret("nil / false").unwrap_err().message,
+        "Operands must be a number."
+    );
+    assert_eq!(
+        interpret("\"hello\" / 2").unwrap_err().message,
+        "Operands must be a number."
+    );
+}
+
+#[test]
+fn not_number_lt_should_fail() {
+    assert_eq!(
+        interpret("1 < true").unwrap_err().message,
+        "Operands must be a number."
+    );
+    assert_eq!(
+        interpret("nil < false").unwrap_err().message,
+        "Operands must be a number."
+    );
+    assert_eq!(
+        interpret("\"hello\" < 2").unwrap_err().message,
+        "Operands must be a number."
+    );
+}
+
+#[test]
+fn not_number_lte_should_fail() {
+    assert_eq!(
+        interpret("1 <= true").unwrap_err().message,
+        "Operands must be a number."
+    );
+    assert_eq!(
+        interpret("nil <= false").unwrap_err().message,
+        "Operands must be a number."
+    );
+    assert_eq!(
+        interpret("\"hello\" <= 2").unwrap_err().message,
+        "Operands must be a number."
+    );
+}
+
+#[test]
+fn not_number_gt_should_fail() {
+    assert_eq!(
+        interpret("1 > true").unwrap_err().message,
+        "Operands must be a number."
+    );
+    assert_eq!(
+        interpret("nil > false").unwrap_err().message,
+        "Operands must be a number."
+    );
+    assert_eq!(
+        interpret("\"hello\" > 2").unwrap_err().message,
+        "Operands must be a number."
+    );
+}
+
+#[test]
+fn not_number_gte_should_fail() {
+    assert_eq!(
+        interpret("1 >= true").unwrap_err().message,
+        "Operands must be a number."
+    );
+    assert_eq!(
+        interpret("nil >= false").unwrap_err().message,
+        "Operands must be a number."
+    );
+    assert_eq!(
+        interpret("\"hello\" >= 2").unwrap_err().message,
+        "Operands must be a number."
+    );
+}
+
+#[test]
+fn not_number_nor_string_addition_should_fail() {
+    assert_eq!(
+        interpret("false + true").unwrap_err().message,
+        "Operands must be two numbers or two strings."
+    );
+    assert_eq!(
+        interpret("nil + true").unwrap_err().message,
+        "Operands must be two numbers or two strings."
+    );
+    assert_eq!(
+        interpret("1 + \"test\"").unwrap_err().message,
+        "Operands must be two numbers or two strings."
+    );
+}

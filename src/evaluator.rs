@@ -25,8 +25,8 @@ impl fmt::Display for Value {
 
 #[derive(Debug, PartialEq)]
 pub struct RuntimeError {
-    token: Token,
-    message: String,
+    pub token: Token,
+    pub message: String,
 }
 
 impl RuntimeError {
@@ -59,7 +59,10 @@ fn evaluate_unary(unary: &Unary) -> Result<Value, RuntimeError> {
     match unary.operator.typ {
         TokenType::Minus => match right_val {
             Value::Number(n) => Ok(Value::Number(-n)),
-            _ => panic!(),
+            _ => Err(RuntimeError::new(
+                unary.operator.clone(),
+                "Operand must be a number.".to_string(),
+            )),
         },
         TokenType::Bang => Ok(bool_to_val(!is_truthy(&right_val))),
         _ => panic!(),
@@ -73,40 +76,47 @@ fn evaluate_binary(binary: &Binary) -> Result<Value, RuntimeError> {
         TokenType::Plus => match (left_val, right_val) {
             (Value::Number(x), Value::Number(y)) => Ok(Value::Number(x + y)),
             (Value::Str(x), Value::Str(y)) => Ok(Value::Str(format!("{}{}", x, y))),
-            _ => panic!(),
+            _ => Err(RuntimeError::new(
+                binary.operator.clone(),
+                "Operands must be two numbers or two strings.".to_string(),
+            )),
         },
         TokenType::Minus => match (left_val, right_val) {
             (Value::Number(x), Value::Number(y)) => Ok(Value::Number(x - y)),
-            _ => panic!(),
+            _ => Err(make_numbers_operand_error(&binary.operator)),
         },
         TokenType::Star => match (left_val, right_val) {
             (Value::Number(x), Value::Number(y)) => Ok(Value::Number(x * y)),
-            _ => panic!(),
+            _ => Err(make_numbers_operand_error(&binary.operator)),
         },
         TokenType::Slash => match (left_val, right_val) {
             (Value::Number(x), Value::Number(y)) => Ok(Value::Number(x / y)),
-            _ => panic!(),
+            _ => Err(make_numbers_operand_error(&binary.operator)),
         },
         TokenType::EqualEqual => Ok(bool_to_val(left_val == right_val)),
         TokenType::BangEqual => Ok(bool_to_val(left_val != right_val)),
         TokenType::LessEqual => match (left_val, right_val) {
             (Value::Number(x), Value::Number(y)) => Ok(bool_to_val(x <= y)),
-            _ => panic!(),
+            _ => Err(make_numbers_operand_error(&binary.operator)),
         },
         TokenType::Less => match (left_val, right_val) {
             (Value::Number(x), Value::Number(y)) => Ok(bool_to_val(x < y)),
-            _ => panic!(),
+            _ => Err(make_numbers_operand_error(&binary.operator)),
         },
         TokenType::GreaterEqual => match (left_val, right_val) {
             (Value::Number(x), Value::Number(y)) => Ok(bool_to_val(x >= y)),
-            _ => panic!(),
+            _ => Err(make_numbers_operand_error(&binary.operator)),
         },
         TokenType::Greater => match (left_val, right_val) {
             (Value::Number(x), Value::Number(y)) => Ok(bool_to_val(x > y)),
-            _ => panic!(),
+            _ => Err(make_numbers_operand_error(&binary.operator)),
         },
         _ => panic!(),
     }
+}
+
+fn make_numbers_operand_error(operator: &Token) -> RuntimeError {
+    RuntimeError::new(operator.clone(), "Operands must be a number.".to_string())
 }
 
 fn is_truthy(value: &Value) -> bool {

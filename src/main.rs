@@ -28,7 +28,7 @@ fn run(content: String) {
     };
     match evaluate(&expr) {
         Ok(value) => println!("{}", value),
-        Err(_) => panic!(),
+        Err(err) => println!("{}\n[line {}]", err.message, err.token.line),
     }
 }
 
