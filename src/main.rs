@@ -7,14 +7,17 @@ use std::io;
 use std::io::Write;
 use std::process::exit;
 
-fn run(content: String) {
+fn run(content: String, exit_on_failure: bool) {
     let scanner = Scanner::new(content);
     let tokens = match scanner.scan_tokens() {
         Err(errors) => {
             for err in errors {
                 println!("{:?}", err);
             }
-            exit(65);
+            if exit_on_failure {
+                exit(65);
+            }
+            return;
         }
         Ok(tokens) => tokens,
     };
@@ -22,19 +25,28 @@ fn run(content: String) {
     let expr = match parser.parse() {
         Err(error) => {
             println!("{:?}", error);
-            exit(65);
+            if exit_on_failure {
+                exit(65);
+            }
+            return;
         }
         Ok(expr) => expr,
     };
     match evaluate(&expr) {
         Ok(value) => println!("{}", value),
-        Err(err) => println!("{}\n[line {}]", err.message, err.token.line),
+        Err(err) => {
+            println!("{}\n[line {}]", err.message, err.token.line);
+            if exit_on_failure {
+                exit(70);
+            }
+            return;
+        }
     }
 }
 
 fn run_file(filename: &str) {
     let contents = fs::read_to_string(filename).expect("Something went wrong reading the file");
-    run(contents);
+    run(contents, true);
 }
 
 fn run_prompt() {
@@ -50,7 +62,7 @@ fn run_prompt() {
         if line == "\n" {
             break;
         }
-        run(line)
+        run(line, false)
     }
 }
 
