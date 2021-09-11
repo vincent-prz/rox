@@ -1,5 +1,5 @@
 use rox::ast;
-use rox::evaluator::evaluate;
+use rox::evaluator::{evaluate, evaluate_program};
 use rox::scanner::Scanner;
 use std::env;
 use std::fs;
@@ -32,8 +32,8 @@ fn run(content: String, exit_on_failure: bool) {
         }
         Ok(expr) => expr,
     };
-    match evaluate(&expr) {
-        Ok(value) => println!("{}", value),
+    match evaluate_program(&expr) {
+        Ok(_) => {}
         Err(err) => {
             println!("{}\n[line {}]", err.message, err.token.line);
             if exit_on_failure {

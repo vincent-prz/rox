@@ -1,4 +1,4 @@
-use crate::ast::{Binary, Expr, Literal, Unary};
+use crate::ast::{Binary, Expr, Literal, Program, Statement, Unary};
 use crate::token::{Token, TokenType};
 use std::fmt;
 
@@ -34,7 +34,27 @@ impl RuntimeError {
         RuntimeError { token, message }
     }
 }
+pub fn evaluate_program(program: &Program) -> Result<(), RuntimeError> {
+    for stmt in &program.statements {
+        evaluate_statement(&stmt)?;
+    }
+    Ok(())
+}
 
+fn evaluate_statement(stmt: &Statement) -> Result<(), RuntimeError> {
+    match stmt {
+        Statement::PrintStmt(expr) => {
+            let value = evaluate(&expr)?;
+            println!("{}", value);
+        }
+        Statement::ExprStmt(expr) => {
+            evaluate(&expr)?;
+        }
+    };
+    Ok(())
+}
+
+// TODO: rename to evaluate_expr
 pub fn evaluate(expr: &Expr) -> Result<Value, RuntimeError> {
     match expr {
         Expr::Literal(lit) => evaluate_literal(lit),

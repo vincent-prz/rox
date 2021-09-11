@@ -1,5 +1,14 @@
 use crate::token::{Token, TokenType, TokenType::*};
 
+pub struct Program {
+    pub statements: Vec<Statement>,
+}
+
+pub enum Statement {
+    ExprStmt(Expr),
+    PrintStmt(Expr),
+}
+
 pub enum Expr {
     Literal(Literal),
     Unary(Unary),
@@ -100,15 +109,21 @@ pub mod parser {
     use super::*;
 
     /*
+    program        → statement* EOF ;
+    statement      → exprStmt
+                   | printStmt ;
+    exprStmt       → expression ";" ;
+    printStmt      → "print" expression ";" ;
+
     expression     → equality ;
     equality       → comparison ( ( "!=" | "==" ) comparison )* ;
     comparison     → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
     term           → factor ( ( "-" | "+" ) factor )* ;
     factor         → unary ( ( "/" | "*" ) unary )* ;
     unary          → ( "!" | "-" ) unary
-                | primary ;
+                   | primary ;
     primary        → NUMBER | STRING | "true" | "false" | "nil"
-                | "(" expression ")" ;
+                   | "(" expression ")" ;
 
     */
     pub struct Parser {
@@ -127,8 +142,8 @@ pub mod parser {
             Self { tokens, current: 0 }
         }
 
-        pub fn parse(&mut self) -> Result<Expr, ParseError> {
-            self.expression()
+        pub fn parse(&mut self) -> Result<Program, ParseError> {
+            self.program()
         }
 
         fn peek(&self) -> &Token {
@@ -165,6 +180,42 @@ pub mod parser {
 
         fn previous(&mut self) -> Token {
             self.tokens[self.current - 1].clone()
+        }
+
+        fn consume(&mut self, typ: &TokenType, message: &str) -> Result<Token, ParseError> {
+            if self.check(typ) {
+                return Ok(self.advance());
+            }
+            Err(ParseError {
+                token: self.peek().clone(),
+                message: message.to_string(),
+            })
+        }
+
+        fn program(&mut self) -> Result<Program, ParseError> {
+            let mut statements: Vec<Statement> = Vec::new();
+            while !self.is_at_end() {
+                let stmt = self.statement()?;
+                statements.push(stmt);
+            }
+            Ok(Program { statements })
+        }
+
+        fn statement(&mut self) -> Result<Statement, ParseError> {
+            let token = self.peek();
+            match token.typ {
+                Print => {
+                    self.advance(); // discard print token
+                    let expr = self.expression()?;
+                    self.consume(&Semicolon, "Expect ';' after value.")?;
+                    Ok(Statement::PrintStmt(expr))
+                }
+                _ => {
+                    let expr = self.expression()?;
+                    self.consume(&Semicolon, "Expect ';' after expression.")?;
+                    Ok(Statement::ExprStmt(expr))
+                }
+            }
         }
 
         fn expression(&mut self) -> Result<Expr, ParseError> {
