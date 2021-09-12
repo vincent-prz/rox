@@ -218,7 +218,8 @@ pub mod parser {
             }
         }
 
-        fn expression(&mut self) -> Result<Expr, ParseError> {
+        // NOTE - letting this function public to allow unit testing of expression parsing and evaluation.
+        pub fn expression(&mut self) -> Result<Expr, ParseError> {
             self.equality()
         }
 

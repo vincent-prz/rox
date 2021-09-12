@@ -34,33 +34,33 @@ impl RuntimeError {
         RuntimeError { token, message }
     }
 }
-pub fn evaluate_program(program: &Program) -> Result<(), RuntimeError> {
+pub fn execute_program(program: &Program) -> Result<(), RuntimeError> {
     for stmt in &program.statements {
-        evaluate_statement(&stmt)?;
+        execute_statement(&stmt)?;
     }
     Ok(())
 }
 
-fn evaluate_statement(stmt: &Statement) -> Result<(), RuntimeError> {
+fn execute_statement(stmt: &Statement) -> Result<(), RuntimeError> {
     match stmt {
         Statement::PrintStmt(expr) => {
-            let value = evaluate(&expr)?;
+            let value = evaluate_expression(&expr)?;
             println!("{}", value);
         }
         Statement::ExprStmt(expr) => {
-            evaluate(&expr)?;
+            evaluate_expression(&expr)?;
         }
     };
     Ok(())
 }
 
-// TODO: rename to evaluate_expr
-pub fn evaluate(expr: &Expr) -> Result<Value, RuntimeError> {
+// NOTE - letting this function public to allow unit testing of expression parsing and evaluation.
+pub fn evaluate_expression(expr: &Expr) -> Result<Value, RuntimeError> {
     match expr {
         Expr::Literal(lit) => evaluate_literal(lit),
         Expr::Unary(unary) => evaluate_unary(unary),
         Expr::Binary(binary) => evaluate_binary(binary),
-        Expr::Grouping(group) => evaluate(&group.expression),
+        Expr::Grouping(group) => evaluate_expression(&group.expression),
     }
 }
 
@@ -75,7 +75,7 @@ fn evaluate_literal(lit: &Literal) -> Result<Value, RuntimeError> {
 }
 
 fn evaluate_unary(unary: &Unary) -> Result<Value, RuntimeError> {
-    let right_val = evaluate(&unary.right)?;
+    let right_val = evaluate_expression(&unary.right)?;
     match unary.operator.typ {
         TokenType::Minus => match right_val {
             Value::Number(n) => Ok(Value::Number(-n)),
@@ -90,8 +90,8 @@ fn evaluate_unary(unary: &Unary) -> Result<Value, RuntimeError> {
 }
 
 fn evaluate_binary(binary: &Binary) -> Result<Value, RuntimeError> {
-    let left_val = evaluate(&binary.left)?;
-    let right_val = evaluate(&binary.right)?;
+    let left_val = evaluate_expression(&binary.left)?;
+    let right_val = evaluate_expression(&binary.right)?;
     match binary.operator.typ {
         TokenType::Plus => match (left_val, right_val) {
             (Value::Number(x), Value::Number(y)) => Ok(Value::Number(x + y)),

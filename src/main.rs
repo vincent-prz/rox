@@ -1,5 +1,5 @@
 use rox::ast;
-use rox::evaluator::{evaluate, evaluate_program};
+use rox::evaluator::execute_program;
 use rox::scanner::Scanner;
 use std::env;
 use std::fs;
@@ -22,7 +22,7 @@ fn run(content: String, exit_on_failure: bool) {
         Ok(tokens) => tokens,
     };
     let mut parser = ast::parser::Parser::new(tokens);
-    let expr = match parser.parse() {
+    let program = match parser.parse() {
         Err(error) => {
             println!("{:?}", error);
             if exit_on_failure {
@@ -32,7 +32,7 @@ fn run(content: String, exit_on_failure: bool) {
         }
         Ok(expr) => expr,
     };
-    match evaluate_program(&expr) {
+    match execute_program(&program) {
         Ok(_) => {}
         Err(err) => {
             println!("{}\n[line {}]", err.message, err.token.line);
