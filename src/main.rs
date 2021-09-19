@@ -1,5 +1,5 @@
 use rox::ast;
-use rox::evaluator::execute_program;
+use rox::interpreter::Interpreter;
 use rox::scanner::Scanner;
 use std::env;
 use std::fs;
@@ -7,7 +7,7 @@ use std::io;
 use std::io::Write;
 use std::process::exit;
 
-fn run(content: String, exit_on_failure: bool) {
+fn run(content: String, interpreter: &mut Interpreter, exit_on_failure: bool) {
     let scanner = Scanner::new(content);
     let tokens = match scanner.scan_tokens() {
         Err(errors) => {
@@ -32,7 +32,7 @@ fn run(content: String, exit_on_failure: bool) {
         }
         Ok(expr) => expr,
     };
-    match execute_program(&program) {
+    match interpreter.interpret(&program) {
         Ok(_) => {}
         Err(err) => {
             println!("{}\n[line {}]", err.message, err.token.line);
@@ -46,10 +46,12 @@ fn run(content: String, exit_on_failure: bool) {
 
 fn run_file(filename: &str) {
     let contents = fs::read_to_string(filename).expect("Something went wrong reading the file");
-    run(contents, true);
+    let mut interpreter = Interpreter::new();
+    run(contents, &mut interpreter, true);
 }
 
 fn run_prompt() {
+    let mut interpreter = Interpreter::new();
     loop {
         print!("> ");
         io::stdout()
@@ -62,7 +64,7 @@ fn run_prompt() {
         if line == "\n" {
             break;
         }
-        run(line, false)
+        run(line, &mut interpreter, false)
     }
 }
 

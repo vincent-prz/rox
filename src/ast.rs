@@ -1,7 +1,17 @@
 use crate::token::{Token, TokenType, TokenType::*};
 
 pub struct Program {
-    pub statements: Vec<Statement>,
+    pub declarations: Vec<Declaration>,
+}
+
+pub enum Declaration {
+    VarDecl(VarDecl),
+    Statement(Statement),
+}
+
+pub struct VarDecl {
+    pub identifier: Token,
+    pub initializer: Option<Expr>,
 }
 
 pub enum Statement {
@@ -14,6 +24,7 @@ pub enum Expr {
     Unary(Unary),
     Binary(Binary),
     Grouping(Grouping),
+    Variable(Token),
 }
 
 pub enum Literal {
@@ -48,6 +59,7 @@ pub mod printer {
             Expr::Grouping(group) => pretty_print_grouping(group),
             Expr::Unary(unary) => pretty_print_unary(unary),
             Expr::Binary(binary) => pretty_print_binary(binary),
+            Expr::Variable(token) => token.lexeme.clone(),
         }
     }
 
@@ -109,7 +121,10 @@ pub mod parser {
     use super::*;
 
     /*
-    program        → statement* EOF ;
+    program        → declaration* EOF ;
+    declaration    → varDecl
+                   | statement ;
+    varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
     statement      → exprStmt
                    | printStmt ;
     exprStmt       → expression ";" ;
@@ -123,7 +138,7 @@ pub mod parser {
     unary          → ( "!" | "-" ) unary
                    | primary ;
     primary        → NUMBER | STRING | "true" | "false" | "nil"
-                   | "(" expression ")" ;
+                   | "(" expression ")" | IDENTIFIER ;
 
     */
     pub struct Parser {
@@ -193,12 +208,37 @@ pub mod parser {
         }
 
         fn program(&mut self) -> Result<Program, ParseError> {
-            let mut statements: Vec<Statement> = Vec::new();
+            let mut declarations: Vec<Declaration> = Vec::new();
             while !self.is_at_end() {
-                let stmt = self.statement()?;
-                statements.push(stmt);
+                let decl = self.declaration()?;
+                declarations.push(decl);
             }
-            Ok(Program { statements })
+            Ok(Program { declarations })
+        }
+
+        fn declaration(&mut self) -> Result<Declaration, ParseError> {
+            let token = self.peek();
+            match token.typ {
+                Var => self.var_decl(),
+                _ => Ok(Declaration::Statement(self.statement()?)),
+            }
+        }
+
+        fn var_decl(&mut self) -> Result<Declaration, ParseError> {
+            self.advance(); // discard var token
+            let lexeme = self.peek().lexeme.clone();
+            // FIXME: need to copy lexeme to check Identifier type -> ugly
+            let identifier = self.consume(&Identifier(lexeme), "Expect variable name.")?;
+            let initializer = if self.matches(&vec![Equal]) {
+                Some(self.expression()?)
+            } else {
+                None
+            };
+            self.consume(&Semicolon, "Expect ';' after declaration.")?;
+            Ok(Declaration::VarDecl(VarDecl {
+                identifier,
+                initializer,
+            }))
         }
 
         fn statement(&mut self) -> Result<Statement, ParseError> {
@@ -296,6 +336,7 @@ pub mod parser {
                         expression: (Box::new(expr)),
                     }))
                 }
+                Identifier(_) => Ok(Expr::Variable(token)),
                 _ => Err(ParseError {
                     message: "Expect expression".to_string(),
                     token,

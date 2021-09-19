@@ -1,4 +1,4 @@
 pub mod ast;
-pub mod evaluator;
+pub mod interpreter;
 pub mod scanner;
 pub mod token;
