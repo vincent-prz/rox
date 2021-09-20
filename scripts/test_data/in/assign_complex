@@ -1,0 +1,7 @@
+print "hello";
+var x = "world!";
+print x;
+var z = 11 + 1 * 2;
+print z;
+var z2 = z / 2;
+print z2;

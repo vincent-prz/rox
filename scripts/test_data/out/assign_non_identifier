@@ -1,0 +1,1 @@
+ParseError { message: "Expect variable name.", token: Token { typ: Number(12.0), lexeme: "12", line: 1 } }
