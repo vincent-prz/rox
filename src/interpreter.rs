@@ -1,4 +1,6 @@
-use crate::ast::{Binary, Declaration, Expr, Literal, Program, Statement, Unary, VarDecl};
+use crate::ast::{
+    Assignment, Binary, Declaration, Expr, Literal, Program, Statement, Unary, VarDecl,
+};
 use crate::token::{Token, TokenType};
 use std::collections::HashMap;
 use std::fmt;
@@ -51,6 +53,16 @@ impl Environment {
         self.values.insert(name, value);
     }
 
+    fn assign(&mut self, name: &Token, value: Value) -> Result<(), RuntimeError> {
+        if self.values.contains_key(&name.lexeme) {
+            return Ok(self.define(name.lexeme.clone(), value));
+        }
+        Err(RuntimeError::new(
+            name.clone(),
+            format!("Undefined variable {}.", name.lexeme),
+        ))
+    }
+
     fn get(&self, name: &Token) -> Result<Value, RuntimeError> {
         match self.values.get(&name.lexeme) {
             Some(value) => Ok(value.clone()),
@@ -101,7 +113,7 @@ impl Interpreter {
         Ok(())
     }
 
-    fn execute_statement(&self, stmt: &Statement) -> Result<(), RuntimeError> {
+    fn execute_statement(&mut self, stmt: &Statement) -> Result<(), RuntimeError> {
         match stmt {
             Statement::PrintStmt(expr) => {
                 let value = self.evaluate_expression(&expr)?;
@@ -115,13 +127,14 @@ impl Interpreter {
     }
 
     // NOTE - letting this function public to allow unit testing of expression parsing and evaluation.
-    pub fn evaluate_expression(&self, expr: &Expr) -> Result<Value, RuntimeError> {
+    pub fn evaluate_expression(&mut self, expr: &Expr) -> Result<Value, RuntimeError> {
         match expr {
             Expr::Literal(lit) => self.evaluate_literal(lit),
             Expr::Unary(unary) => self.evaluate_unary(unary),
             Expr::Binary(binary) => self.evaluate_binary(binary),
             Expr::Grouping(group) => self.evaluate_expression(&group.expression),
             Expr::Variable(name) => self.environnment.get(name),
+            Expr::Assignment(assignment) => self.evaluate_assignment(assignment),
         }
     }
 
@@ -135,7 +148,7 @@ impl Interpreter {
         })
     }
 
-    fn evaluate_unary(&self, unary: &Unary) -> Result<Value, RuntimeError> {
+    fn evaluate_unary(&mut self, unary: &Unary) -> Result<Value, RuntimeError> {
         let right_val = self.evaluate_expression(&unary.right)?;
         match unary.operator.typ {
             TokenType::Minus => match right_val {
@@ -150,7 +163,7 @@ impl Interpreter {
         }
     }
 
-    fn evaluate_binary(&self, binary: &Binary) -> Result<Value, RuntimeError> {
+    fn evaluate_binary(&mut self, binary: &Binary) -> Result<Value, RuntimeError> {
         let left_val = self.evaluate_expression(&binary.left)?;
         let right_val = self.evaluate_expression(&binary.right)?;
         match binary.operator.typ {
@@ -192,8 +205,15 @@ impl Interpreter {
                 (Value::Number(x), Value::Number(y)) => Ok(bool_to_val(x > y)),
                 _ => Err(make_numbers_operand_error(&binary.operator)),
             },
+            // FIXME: this
             _ => panic!(),
         }
+    }
+
+    fn evaluate_assignment(&mut self, assignment: &Assignment) -> Result<Value, RuntimeError> {
+        let value = self.evaluate_expression(&assignment.value)?;
+        self.environnment.assign(&assignment.name, value.clone())?;
+        Ok(value)
     }
 }
 

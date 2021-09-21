@@ -4,6 +4,10 @@ TEST_DIR="scripts/test_data"
 EXEC_PATH="target/debug/rox"
 
 cargo build
+if [[ $? -ne 0 ]]; then
+    echo "Couldn't build the interpreter, aborting."
+    exit 1
+fi
 
 nb_tests=0
 nb_failures=0
@@ -28,4 +32,5 @@ if [[ nb_failures -eq 0 ]]; then
     echo "All good, ${nb_tests} tests passed."
 else
     echo "${nb_failures} tests failed out of ${nb_tests}."
+    exit 1
 fi

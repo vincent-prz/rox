@@ -25,6 +25,7 @@ pub enum Expr {
     Binary(Binary),
     Grouping(Grouping),
     Variable(Token),
+    Assignment(Assignment),
 }
 
 pub enum Literal {
@@ -50,6 +51,11 @@ pub struct Binary {
     pub right: Box<Expr>,
 }
 
+pub struct Assignment {
+    pub name: Token,
+    pub value: Box<Expr>,
+}
+
 pub mod printer {
     use super::*;
 
@@ -60,6 +66,7 @@ pub mod printer {
             Expr::Unary(unary) => pretty_print_unary(unary),
             Expr::Binary(binary) => pretty_print_binary(binary),
             Expr::Variable(token) => token.lexeme.clone(),
+            Expr::Assignment(assignment) => pretty_print_assignment(assignment),
         }
     }
 
@@ -87,6 +94,14 @@ pub mod printer {
             binary.operator.lexeme,
             pretty_print(&binary.left),
             pretty_print(&binary.right)
+        )
+    }
+
+    fn pretty_print_assignment(assignment: &Assignment) -> String {
+        format!(
+            "(= {} {})",
+            assignment.name.lexeme,
+            pretty_print(&assignment.value)
         )
     }
 }
@@ -130,7 +145,9 @@ pub mod parser {
     exprStmt       → expression ";" ;
     printStmt      → "print" expression ";" ;
 
-    expression     → equality ;
+    expression     → assignment ;
+    assignment     → IDENTIFIER "=" assignment
+                   | equality ;
     equality       → comparison ( ( "!=" | "==" ) comparison )* ;
     comparison     → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
     term           → factor ( ( "-" | "+" ) factor )* ;
@@ -260,7 +277,27 @@ pub mod parser {
 
         // NOTE - letting this function public to allow unit testing of expression parsing and evaluation.
         pub fn expression(&mut self) -> Result<Expr, ParseError> {
-            self.equality()
+            self.assignment()
+        }
+
+        fn assignment(&mut self) -> Result<Expr, ParseError> {
+            let expr = self.equality()?;
+            if self.matches(&vec![Equal]) {
+                let equals = self.previous();
+                let value = self.assignment()?;
+                return match expr {
+                    Expr::Variable(name) => Ok(Expr::Assignment(Assignment {
+                        name,
+                        value: Box::new(value),
+                    })),
+                    // FIXME: should keep parsing here
+                    _ => Err(ParseError {
+                        token: equals,
+                        message: "Invalid assignment target.".to_string(),
+                    }),
+                };
+            }
+            Ok(expr)
         }
 
         /*
