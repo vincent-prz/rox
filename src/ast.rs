@@ -17,6 +17,7 @@ pub struct VarDecl {
 pub enum Statement {
     ExprStmt(Expr),
     PrintStmt(Expr),
+    Block(Vec<Declaration>),
 }
 
 pub enum Expr {
@@ -141,7 +142,9 @@ pub mod parser {
                    | statement ;
     varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
     statement      → exprStmt
-                   | printStmt ;
+                   | printStmt
+                   | block
+    block          → "{" declaration* "}"
     exprStmt       → expression ";" ;
     printStmt      → "print" expression ";" ;
 
@@ -267,12 +270,24 @@ pub mod parser {
                     self.consume(&Semicolon, "Expect ';' after value.")?;
                     Ok(Statement::PrintStmt(expr))
                 }
+                LeftBrace => Ok(Statement::Block(self.block()?)),
                 _ => {
                     let expr = self.expression()?;
                     self.consume(&Semicolon, "Expect ';' after expression.")?;
                     Ok(Statement::ExprStmt(expr))
                 }
             }
+        }
+
+        fn block(&mut self) -> Result<Vec<Declaration>, ParseError> {
+            self.advance(); // discard left brace
+            let mut result = vec![];
+            while self.peek().typ != RightBrace && !self.is_at_end() {
+                let decl = self.declaration()?;
+                result.push(decl);
+            }
+            self.consume(&RightBrace, "Expect '}' after block.")?;
+            Ok(result)
         }
 
         // NOTE - letting this function public to allow unit testing of expression parsing and evaluation.

@@ -1,0 +1,7 @@
+var volume = 11;
+volume = 0;
+
+{
+    var volume = 3 * 4 * 5;
+    print volume;
+}

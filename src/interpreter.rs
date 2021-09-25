@@ -38,14 +38,24 @@ impl RuntimeError {
     }
 }
 
+#[derive(Clone)]
 struct Environment {
     values: HashMap<String, Value>,
+    enclosing: Option<Box<Environment>>,
 }
 
 impl Environment {
     fn new() -> Self {
         Environment {
             values: HashMap::new(),
+            enclosing: None,
+        }
+    }
+
+    fn new_with_enclosing(env: Environment) -> Self {
+        Environment {
+            values: HashMap::new(),
+            enclosing: Some(Box::new(env)),
         }
     }
 
@@ -66,10 +76,13 @@ impl Environment {
     fn get(&self, name: &Token) -> Result<Value, RuntimeError> {
         match self.values.get(&name.lexeme) {
             Some(value) => Ok(value.clone()),
-            None => Err(RuntimeError::new(
-                name.clone(),
-                format!("Undefined variable {}.", name.lexeme),
-            )),
+            None => match &self.enclosing {
+                Some(enclosing) => enclosing.get(name),
+                None => Err(RuntimeError::new(
+                    name.clone(),
+                    format!("Undefined variable {}.", name.lexeme),
+                )),
+            },
         }
     }
 }
@@ -122,7 +135,20 @@ impl Interpreter {
             Statement::ExprStmt(expr) => {
                 self.evaluate_expression(&expr)?;
             }
+            Statement::Block(declarations) => self.execute_block(declarations)?,
         };
+        Ok(())
+    }
+
+    fn execute_block(&mut self, declarations: &Vec<Declaration>) -> Result<(), RuntimeError> {
+        // FIXME: get rid of clones
+        let enclosing = self.environnment.clone();
+        let enclosing2 = self.environnment.clone();
+        self.environnment = Environment::new_with_enclosing(enclosing);
+        for decl in declarations {
+            self.execute_declaration(decl)?;
+        }
+        self.environnment = enclosing2;
         Ok(())
     }
 
