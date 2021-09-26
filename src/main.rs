@@ -1,5 +1,5 @@
 use rox::ast;
-use rox::interpreter::Interpreter;
+use rox::interpreter::{Environment, interpreter};
 use rox::scanner::Scanner;
 use std::env;
 use std::fs;
@@ -7,7 +7,7 @@ use std::io;
 use std::io::Write;
 use std::process::exit;
 
-fn run(content: String, interpreter: &mut Interpreter, exit_on_failure: bool) {
+fn run(content: String, env: &mut Environment, exit_on_failure: bool) {
     let scanner = Scanner::new(content);
     let tokens = match scanner.scan_tokens() {
         Err(errors) => {
@@ -32,7 +32,7 @@ fn run(content: String, interpreter: &mut Interpreter, exit_on_failure: bool) {
         }
         Ok(expr) => expr,
     };
-    match interpreter.interpret(&program) {
+    match interpreter::execute_program(env, &program) {
         Ok(_) => {}
         Err(err) => {
             println!("{}\n[line {}]", err.message, err.token.line);
@@ -46,12 +46,11 @@ fn run(content: String, interpreter: &mut Interpreter, exit_on_failure: bool) {
 
 fn run_file(filename: &str) {
     let contents = fs::read_to_string(filename).expect("Something went wrong reading the file");
-    let mut interpreter = Interpreter::new();
-    run(contents, &mut interpreter, true);
+    run(contents, &mut Environment::new(), true);
 }
 
 fn run_prompt() {
-    let mut interpreter = Interpreter::new();
+    let mut env = Environment::new();
     loop {
         print!("> ");
         io::stdout()
@@ -64,7 +63,7 @@ fn run_prompt() {
         if line == "\n" {
             break;
         }
-        run(line, &mut interpreter, false)
+        run(line, &mut env, false)
     }
 }
 

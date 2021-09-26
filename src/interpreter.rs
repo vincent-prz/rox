@@ -38,21 +38,20 @@ impl RuntimeError {
     }
 }
 
-#[derive(Clone)]
-struct Environment {
+pub struct Environment<'a> {
     values: HashMap<String, Value>,
-    enclosing: Option<Box<Environment>>,
+    enclosing: Option<Box<&'a Environment<'a>>>,
 }
 
-impl Environment {
-    fn new() -> Self {
+impl<'a> Environment<'a> {
+    pub fn new() -> Self {
         Environment {
             values: HashMap::new(),
             enclosing: None,
         }
     }
 
-    fn new_with_enclosing(env: Environment) -> Self {
+    fn new_with_enclosing(env: &'a Environment) -> Self {
         Environment {
             values: HashMap::new(),
             enclosing: Some(Box::new(env)),
@@ -87,84 +86,79 @@ impl Environment {
     }
 }
 
-pub struct Interpreter {
-    environnment: Environment,
-}
+pub mod interpreter {
 
-impl Interpreter {
-    pub fn new() -> Self {
-        Interpreter {
-            environnment: Environment::new(),
-        }
+    use super::*;
+
+    pub fn interpret(program: &Program) -> Result<(), RuntimeError> {
+        let mut env = Environment::new();
+        execute_program(&mut env, program)
     }
 
-    pub fn interpret(&mut self, program: &Program) -> Result<(), RuntimeError> {
-        self.execute_program(program)
-    }
-
-    fn execute_program(&mut self, program: &Program) -> Result<(), RuntimeError> {
+    pub fn execute_program(env: &mut Environment, program: &Program) -> Result<(), RuntimeError> {
         for decl in &program.declarations {
-            self.execute_declaration(&decl)?;
+            execute_declaration(env, &decl)?;
         }
         Ok(())
     }
 
-    fn execute_declaration(&mut self, decl: &Declaration) -> Result<(), RuntimeError> {
+    fn execute_declaration(env: &mut Environment, decl: &Declaration) -> Result<(), RuntimeError> {
         match decl {
-            Declaration::VarDecl(var_decl) => self.execute_var_decl(var_decl),
-            Declaration::Statement(stmt) => self.execute_statement(stmt),
+            Declaration::VarDecl(var_decl) => execute_var_decl(env, var_decl),
+            Declaration::Statement(stmt) => execute_statement(env, stmt),
         }
     }
 
-    fn execute_var_decl(&mut self, decl: &VarDecl) -> Result<(), RuntimeError> {
+    fn execute_var_decl(env: &mut Environment, decl: &VarDecl) -> Result<(), RuntimeError> {
         let varname = decl.identifier.lexeme.clone();
         let value = match &decl.initializer {
             None => Value::Nil,
-            Some(expr) => self.evaluate_expression(&expr)?,
+            Some(expr) => evaluate_expression(env, &expr)?,
         };
-        self.environnment.define(varname, value);
+        env.define(varname, value);
         Ok(())
     }
 
-    fn execute_statement(&mut self, stmt: &Statement) -> Result<(), RuntimeError> {
+    fn execute_statement(env: &mut Environment, stmt: &Statement) -> Result<(), RuntimeError> {
         match stmt {
             Statement::PrintStmt(expr) => {
-                let value = self.evaluate_expression(&expr)?;
+                let value = evaluate_expression(env, &expr)?;
                 println!("{}", value);
             }
             Statement::ExprStmt(expr) => {
-                self.evaluate_expression(&expr)?;
+                evaluate_expression(env, &expr)?;
             }
-            Statement::Block(declarations) => self.execute_block(declarations)?,
+            Statement::Block(declarations) => execute_block(env, declarations)?,
         };
         Ok(())
     }
 
-    fn execute_block(&mut self, declarations: &Vec<Declaration>) -> Result<(), RuntimeError> {
-        // FIXME: get rid of clones
-        let enclosing = self.environnment.clone();
-        let enclosing2 = self.environnment.clone();
-        self.environnment = Environment::new_with_enclosing(enclosing);
+    fn execute_block(env: &Environment, declarations: &Vec<Declaration>) -> Result<(), RuntimeError> {
+        let mut new_env = Environment::new_with_enclosing(env);
         for decl in declarations {
-            self.execute_declaration(decl)?;
+            execute_declaration(&mut new_env, decl)?;
         }
-        self.environnment = enclosing2;
         Ok(())
     }
 
-    // NOTE - letting this function public to allow unit testing of expression parsing and evaluation.
-    pub fn evaluate_expression(&mut self, expr: &Expr) -> Result<Value, RuntimeError> {
+    // NOTE - creating this public function to allow unit testing of expression parsing and evaluation.
+    pub fn evaluate_expression_without_env(expr: &Expr) -> Result<Value, RuntimeError> {
+        let mut env = Environment::new();
+        evaluate_expression(&mut env, expr)
+    }
+
+    fn evaluate_expression(env: &mut Environment, expr: &Expr) -> Result<Value, RuntimeError> {
         match expr {
-            Expr::Literal(lit) => self.evaluate_literal(lit),
-            Expr::Unary(unary) => self.evaluate_unary(unary),
-            Expr::Binary(binary) => self.evaluate_binary(binary),
-            Expr::Grouping(group) => self.evaluate_expression(&group.expression),
-            Expr::Variable(name) => self.environnment.get(name),
-            Expr::Assignment(assignment) => self.evaluate_assignment(assignment),
+            Expr::Literal(lit) => evaluate_literal(env, lit),
+            Expr::Unary(unary) => evaluate_unary(env, unary),
+            Expr::Binary(binary) => evaluate_binary(env, binary),
+            Expr::Grouping(group) => evaluate_expression(env, &group.expression),
+            Expr::Variable(name) => env.get(name),
+            Expr::Assignment(assignment) => evaluate_assignment(env, assignment),
         }
     }
 
-    fn evaluate_literal(&self, lit: &Literal) -> Result<Value, RuntimeError> {
+    fn evaluate_literal(env: &Environment, lit: &Literal) -> Result<Value, RuntimeError> {
         Ok(match lit {
             Literal::Nil => Value::Nil,
             Literal::True => Value::True,
@@ -174,8 +168,8 @@ impl Interpreter {
         })
     }
 
-    fn evaluate_unary(&mut self, unary: &Unary) -> Result<Value, RuntimeError> {
-        let right_val = self.evaluate_expression(&unary.right)?;
+    fn evaluate_unary(env: &mut Environment, unary: &Unary) -> Result<Value, RuntimeError> {
+        let right_val = evaluate_expression(env, &unary.right)?;
         match unary.operator.typ {
             TokenType::Minus => match right_val {
                 Value::Number(n) => Ok(Value::Number(-n)),
@@ -189,9 +183,9 @@ impl Interpreter {
         }
     }
 
-    fn evaluate_binary(&mut self, binary: &Binary) -> Result<Value, RuntimeError> {
-        let left_val = self.evaluate_expression(&binary.left)?;
-        let right_val = self.evaluate_expression(&binary.right)?;
+    fn evaluate_binary(env: &mut Environment, binary: &Binary) -> Result<Value, RuntimeError> {
+        let left_val = evaluate_expression(env, &binary.left)?;
+        let right_val = evaluate_expression(env, &binary.right)?;
         match binary.operator.typ {
             TokenType::Plus => match (left_val, right_val) {
                 (Value::Number(x), Value::Number(y)) => Ok(Value::Number(x + y)),
@@ -236,9 +230,9 @@ impl Interpreter {
         }
     }
 
-    fn evaluate_assignment(&mut self, assignment: &Assignment) -> Result<Value, RuntimeError> {
-        let value = self.evaluate_expression(&assignment.value)?;
-        self.environnment.assign(&assignment.name, value.clone())?;
+    fn evaluate_assignment(env: &mut Environment, assignment: &Assignment) -> Result<Value, RuntimeError> {
+        let value = evaluate_expression(env, &assignment.value)?;
+        env.assign(&assignment.name, value.clone())?;
         Ok(value)
     }
 }
