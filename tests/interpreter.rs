@@ -1,6 +1,6 @@
 // test scanning + parsing + evaluating altogether
 use rox::ast;
-use rox::interpreter::{interpreter, RuntimeError, Value};
+use rox::interpreter::{interpreter, Environment, RuntimeError, Value};
 use rox::scanner::Scanner;
 
 fn interpret(s: &str) -> Result<Value, RuntimeError> {
@@ -10,7 +10,7 @@ fn interpret(s: &str) -> Result<Value, RuntimeError> {
         .expect("Unexpected failure of scanning");
     let mut parser = ast::parser::Parser::new(tokens);
     let expr = parser.expression().expect("Unexpected failure of parsing");
-    interpreter::evaluate_expression_without_env(&expr)
+    interpreter::evaluate_expression(&mut Environment::new(), &expr)
 }
 
 #[test]

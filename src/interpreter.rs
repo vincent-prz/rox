@@ -95,7 +95,15 @@ pub mod interpreter {
         execute_program(&mut env, program)
     }
 
-    pub fn execute_program(env: &mut Environment, program: &Program) -> Result<(), RuntimeError> {
+    // This variant of `interpret` is useful for the REPL
+    pub fn interpret_with_env(
+        env: &mut Environment,
+        program: &Program,
+    ) -> Result<(), RuntimeError> {
+        execute_program(env, program)
+    }
+
+    fn execute_program(env: &mut Environment, program: &Program) -> Result<(), RuntimeError> {
         for decl in &program.declarations {
             execute_declaration(env, &decl)?;
         }
@@ -133,7 +141,10 @@ pub mod interpreter {
         Ok(())
     }
 
-    fn execute_block(env: &Environment, declarations: &Vec<Declaration>) -> Result<(), RuntimeError> {
+    fn execute_block(
+        env: &Environment,
+        declarations: &Vec<Declaration>,
+    ) -> Result<(), RuntimeError> {
         let mut new_env = Environment::new_with_enclosing(env);
         for decl in declarations {
             execute_declaration(&mut new_env, decl)?;
@@ -141,13 +152,8 @@ pub mod interpreter {
         Ok(())
     }
 
-    // NOTE - creating this public function to allow unit testing of expression parsing and evaluation.
-    pub fn evaluate_expression_without_env(expr: &Expr) -> Result<Value, RuntimeError> {
-        let mut env = Environment::new();
-        evaluate_expression(&mut env, expr)
-    }
-
-    fn evaluate_expression(env: &mut Environment, expr: &Expr) -> Result<Value, RuntimeError> {
+    // NOTE -public function for REPL
+    pub fn evaluate_expression(env: &mut Environment, expr: &Expr) -> Result<Value, RuntimeError> {
         match expr {
             Expr::Literal(lit) => evaluate_literal(env, lit),
             Expr::Unary(unary) => evaluate_unary(env, unary),
@@ -230,7 +236,10 @@ pub mod interpreter {
         }
     }
 
-    fn evaluate_assignment(env: &mut Environment, assignment: &Assignment) -> Result<Value, RuntimeError> {
+    fn evaluate_assignment(
+        env: &mut Environment,
+        assignment: &Assignment,
+    ) -> Result<Value, RuntimeError> {
         let value = evaluate_expression(env, &assignment.value)?;
         env.assign(&assignment.name, value.clone())?;
         Ok(value)
