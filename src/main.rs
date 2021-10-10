@@ -1,6 +1,7 @@
 use rox::ast;
 use rox::interpreter::{interpreter, Environment};
 use rox::scanner::Scanner;
+use rox::token::Token;
 use std::env;
 use std::fs;
 use std::io;
@@ -8,9 +9,10 @@ use std::io::Write;
 use std::process::exit;
 
 /// Try to parse and run an expression. This is useful for the REPL mode,
-/// were we want to be able to ro evaluate an expression (and not necessaritly a statement).
+/// where we want to be able to ro evaluate an expression (and not necessaritly a statement).
 /// return None if the parsing failed.
-fn run_expr(parser: &mut ast::parser::Parser, env: &mut Environment) -> Option<()> {
+fn run_expr(tokens: &Vec<Token>, env: &mut Environment) -> Option<()> {
+    let mut parser = ast::parser::Parser::new(tokens.clone());
     let expr = match parser.expression() {
         Err(_) => return None,
         Ok(expr) => expr,
@@ -40,13 +42,15 @@ fn run(content: String, env: &mut Environment, prompt_mode: bool) {
         }
         Ok(tokens) => tokens,
     };
-    let mut parser = ast::parser::Parser::new(tokens);
+
     if prompt_mode {
-        match run_expr(&mut parser, env) {
+        match run_expr(&tokens, env) {
             None => {}
             Some(()) => return,
         }
     }
+
+    let mut parser = ast::parser::Parser::new(tokens);
     let program = match parser.parse() {
         Err(error) => {
             println!("{:?}", error);
