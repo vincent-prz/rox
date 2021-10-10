@@ -16,6 +16,7 @@ pub struct VarDecl {
 
 pub enum Statement {
     ExprStmt(Expr),
+    IfStmt(IfStmt),
     PrintStmt(Expr),
     Block(Vec<Declaration>),
 }
@@ -55,6 +56,12 @@ pub struct Binary {
 pub struct Assignment {
     pub name: Token,
     pub value: Box<Expr>,
+}
+
+pub struct IfStmt {
+    pub condition: Expr,
+    pub then_branch: Box<Statement>,
+    pub else_branch: Option<Box<Statement>>,
 }
 
 pub mod printer {
@@ -142,10 +149,13 @@ pub mod parser {
                    | statement ;
     varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
     statement      → exprStmt
+                   | ifStmt
                    | printStmt
                    | block
     block          → "{" declaration* "}"
     exprStmt       → expression ";" ;
+    ifStmt         → "if" "(" expression ")" statement
+                   ( "else" statement )? ;
     printStmt      → "print" expression ";" ;
 
     expression     → assignment ;
@@ -264,6 +274,7 @@ pub mod parser {
         fn statement(&mut self) -> Result<Statement, ParseError> {
             let token = self.peek();
             match token.typ {
+                If => Ok(Statement::IfStmt(self.if_stmt()?)),
                 Print => {
                     self.advance(); // discard print token
                     let expr = self.expression()?;
@@ -277,6 +288,26 @@ pub mod parser {
                     Ok(Statement::ExprStmt(expr))
                 }
             }
+        }
+
+        fn if_stmt(&mut self) -> Result<IfStmt, ParseError> {
+            self.advance(); // discard print token
+            self.consume(&LeftParen, "Expect '(' after if.")?;
+            let condition = self.expression()?;
+            self.consume(&RightParen, "Expect ')' after if condition.")?;
+            let then_branch = self.statement()?;
+            let next_token = self.peek();
+            let else_branch = if next_token.typ == Else {
+                self.advance(); // discard else token
+                Some(Box::new(self.statement()?))
+            } else {
+                None
+            };
+            Ok(IfStmt {
+                condition,
+                then_branch: Box::new(then_branch),
+                else_branch,
+            })
         }
 
         fn block(&mut self) -> Result<Vec<Declaration>, ParseError> {

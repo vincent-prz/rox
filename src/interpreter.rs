@@ -1,5 +1,5 @@
 use crate::ast::{
-    Assignment, Binary, Declaration, Expr, Literal, Program, Statement, Unary, VarDecl,
+    Assignment, Binary, Declaration, Expr, IfStmt, Literal, Program, Statement, Unary, VarDecl,
 };
 use crate::token::{Token, TokenType};
 use std::collections::HashMap;
@@ -137,6 +137,20 @@ pub mod interpreter {
                 evaluate_expression(env, &expr)?;
             }
             Statement::Block(declarations) => execute_block(env, declarations)?,
+            Statement::IfStmt(IfStmt {
+                condition,
+                then_branch,
+                else_branch,
+            }) => {
+                if is_truthy(&evaluate_expression(env, condition)?) {
+                    execute_statement(env, then_branch)?;
+                } else {
+                    match else_branch {
+                        None => {}
+                        Some(statement) => execute_statement(env, statement)?,
+                    }
+                }
+            }
         };
         Ok(())
     }

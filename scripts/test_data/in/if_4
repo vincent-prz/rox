@@ -1,0 +1,2 @@
+// else should be bound to nearest enclosing if
+if (true) if (false) print "not printed"; else print "printed";
