@@ -28,6 +28,7 @@ pub enum Expr {
     Grouping(Grouping),
     Variable(Token),
     Assignment(Assignment),
+    Logical(Logical),
 }
 
 pub enum Literal {
@@ -48,6 +49,12 @@ pub struct Unary {
 }
 
 pub struct Binary {
+    pub left: Box<Expr>,
+    pub operator: Token,
+    pub right: Box<Expr>,
+}
+
+pub struct Logical {
     pub left: Box<Expr>,
     pub operator: Token,
     pub right: Box<Expr>,
@@ -75,6 +82,7 @@ pub mod printer {
             Expr::Binary(binary) => pretty_print_binary(binary),
             Expr::Variable(token) => token.lexeme.clone(),
             Expr::Assignment(assignment) => pretty_print_assignment(assignment),
+            Expr::Logical(logical) => pretty_print_logical(logical),
         }
     }
 
@@ -102,6 +110,15 @@ pub mod printer {
             binary.operator.lexeme,
             pretty_print(&binary.left),
             pretty_print(&binary.right)
+        )
+    }
+
+    fn pretty_print_logical(logical: &Logical) -> String {
+        format!(
+            "({} {} {})",
+            logical.operator.lexeme,
+            pretty_print(&logical.left),
+            pretty_print(&logical.right)
         )
     }
 
@@ -160,7 +177,9 @@ pub mod parser {
 
     expression     → assignment ;
     assignment     → IDENTIFIER "=" assignment
-                   | equality ;
+                   | logic_or ;
+    logic_or       → logic_and ( "or" logic_and )* ;
+    logic_and      → equality ( "and" equality )* ;
     equality       → comparison ( ( "!=" | "==" ) comparison )* ;
     comparison     → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
     term           → factor ( ( "-" | "+" ) factor )* ;
@@ -327,7 +346,7 @@ pub mod parser {
         }
 
         fn assignment(&mut self) -> Result<Expr, ParseError> {
-            let expr = self.equality()?;
+            let expr = self.logic_or()?;
             if self.matches(&vec![Equal]) {
                 let equals = self.previous();
                 let value = self.assignment()?;
@@ -342,6 +361,34 @@ pub mod parser {
                         message: "Invalid assignment target.".to_string(),
                     }),
                 };
+            }
+            Ok(expr)
+        }
+
+        fn logic_or(&mut self) -> Result<Expr, ParseError> {
+            let mut expr = self.logic_and()?;
+            while self.matches(&vec![Or]) {
+                let operator = self.previous();
+                let right = self.logic_and()?;
+                expr = Expr::Logical(Logical {
+                    left: Box::new(expr),
+                    operator,
+                    right: Box::new(right),
+                });
+            }
+            Ok(expr)
+        }
+
+        fn logic_and(&mut self) -> Result<Expr, ParseError> {
+            let mut expr = self.equality()?;
+            while self.matches(&vec![And]) {
+                let operator = self.previous();
+                let right = self.equality()?;
+                expr = Expr::Logical(Logical {
+                    left: Box::new(expr),
+                    operator,
+                    right: Box::new(right),
+                });
             }
             Ok(expr)
         }

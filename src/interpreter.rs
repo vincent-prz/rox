@@ -1,5 +1,6 @@
 use crate::ast::{
-    Assignment, Binary, Declaration, Expr, IfStmt, Literal, Program, Statement, Unary, VarDecl,
+    Assignment, Binary, Declaration, Expr, IfStmt, Literal, Logical, Program, Statement, Unary,
+    VarDecl,
 };
 use crate::token::{Token, TokenType};
 use std::collections::HashMap;
@@ -166,7 +167,7 @@ pub mod interpreter {
         Ok(())
     }
 
-    // NOTE -public function for REPL
+    // NOTE - public function for REPL
     pub fn evaluate_expression(env: &mut Environment, expr: &Expr) -> Result<Value, RuntimeError> {
         match expr {
             Expr::Literal(lit) => evaluate_literal(env, lit),
@@ -175,6 +176,7 @@ pub mod interpreter {
             Expr::Grouping(group) => evaluate_expression(env, &group.expression),
             Expr::Variable(name) => env.get(name),
             Expr::Assignment(assignment) => evaluate_assignment(env, assignment),
+            Expr::Logical(logical) => evaluate_logical(env, logical),
         }
     }
 
@@ -257,6 +259,21 @@ pub mod interpreter {
         let value = evaluate_expression(env, &assignment.value)?;
         env.assign(&assignment.name, value.clone())?;
         Ok(value)
+    }
+
+    fn evaluate_logical(env: &mut Environment, logical: &Logical) -> Result<Value, RuntimeError> {
+        let left_val = evaluate_expression(env, &logical.left)?;
+        let right_val = evaluate_expression(env, &logical.right)?;
+        match logical.operator.typ {
+            TokenType::Or => {
+                if is_truthy(&left_val) {
+                    return Ok(left_val);
+                }
+                return Ok(right_val);
+            }
+            // FIXME: this
+            _ => panic!(),
+        }
     }
 }
 
