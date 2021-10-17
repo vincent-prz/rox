@@ -1,6 +1,6 @@
 use crate::ast::{
     Assignment, Binary, Declaration, Expr, IfStmt, Literal, Logical, Program, Statement, Unary,
-    VarDecl,
+    VarDecl, WhileStmt,
 };
 use crate::token::{Token, TokenType};
 use std::collections::HashMap;
@@ -39,12 +39,13 @@ impl RuntimeError {
     }
 }
 
-pub struct Environment<'a> {
+#[derive(Clone, Debug)]
+pub struct Environment {
     values: HashMap<String, Value>,
-    enclosing: Option<Box<&'a Environment<'a>>>,
+    enclosing: Option<Box<Environment>>,
 }
 
-impl<'a> Environment<'a> {
+impl Environment {
     pub fn new() -> Self {
         Environment {
             values: HashMap::new(),
@@ -52,7 +53,7 @@ impl<'a> Environment<'a> {
         }
     }
 
-    fn new_with_enclosing(env: &'a Environment) -> Self {
+    fn new_with_enclosing(env: Environment) -> Self {
         Environment {
             values: HashMap::new(),
             enclosing: Some(Box::new(env)),
@@ -67,10 +68,13 @@ impl<'a> Environment<'a> {
         if self.values.contains_key(&name.lexeme) {
             return Ok(self.define(name.lexeme.clone(), value));
         }
-        Err(RuntimeError::new(
-            name.clone(),
-            format!("Undefined variable {}.", name.lexeme),
-        ))
+        match &mut self.enclosing {
+            Some(enclosing) => enclosing.assign(name, value),
+            None => Err(RuntimeError::new(
+                name.clone(),
+                format!("Cannot assign undefined variable {}.", name.lexeme),
+            )),
+        }
     }
 
     fn get(&self, name: &Token) -> Result<Value, RuntimeError> {
@@ -152,17 +156,35 @@ pub mod interpreter {
                     }
                 }
             }
-        };
+            Statement::WhileStmt(while_stmt) => execute_while_statement(env, while_stmt)?,
+        }
         Ok(())
     }
 
     fn execute_block(
-        env: &Environment,
+        env: &mut Environment,
         declarations: &Vec<Declaration>,
     ) -> Result<(), RuntimeError> {
-        let mut new_env = Environment::new_with_enclosing(env);
+        // FIXME: awfully cloning env here, because I didn't manage to make enclosing behind a ref
+        // Indeed, I had lifetimes compiler issues I could not solve.
+        let parent_env = env.clone();
+        let mut new_env = Environment::new_with_enclosing(parent_env);
         for decl in declarations {
             execute_declaration(&mut new_env, decl)?;
+        }
+        // I want env to become new_env.enclosing. FIXME: thhis doesn;t work with nested envs
+        env.values = new_env.enclosing.unwrap().values;
+        Ok(())
+    }
+
+    fn execute_while_statement(
+        env: &mut Environment,
+        while_stmt: &WhileStmt,
+    ) -> Result<(), RuntimeError> {
+        let condition = &while_stmt.condition;
+        let body = &while_stmt.body;
+        while is_truthy(&evaluate_expression(env, &condition)?) {
+            execute_statement(env, &body)?;
         }
         Ok(())
     }
@@ -278,7 +300,7 @@ pub mod interpreter {
                 let right_val = evaluate_expression(env, &logical.right)?;
                 return Ok(right_val);
             }
-            // FIXME: this
+            // This case should not occur if parsing was done correctly
             _ => panic!(),
         }
     }

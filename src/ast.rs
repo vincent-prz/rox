@@ -18,6 +18,7 @@ pub enum Statement {
     ExprStmt(Expr),
     IfStmt(IfStmt),
     PrintStmt(Expr),
+    WhileStmt(WhileStmt),
     Block(Vec<Declaration>),
 }
 
@@ -69,6 +70,11 @@ pub struct IfStmt {
     pub condition: Expr,
     pub then_branch: Box<Statement>,
     pub else_branch: Option<Box<Statement>>,
+}
+
+pub struct WhileStmt {
+    pub condition: Expr,
+    pub body: Box<Statement>,
 }
 
 pub mod printer {
@@ -168,11 +174,13 @@ pub mod parser {
     statement      → exprStmt
                    | ifStmt
                    | printStmt
+                   | whileStmt
                    | block
     block          → "{" declaration* "}"
     exprStmt       → expression ";" ;
     ifStmt         → "if" "(" expression ")" statement
                    ( "else" statement )? ;
+    whileStmt      → "while" "(" expression ")" statement;
     printStmt      → "print" expression ";" ;
 
     expression     → assignment ;
@@ -294,6 +302,7 @@ pub mod parser {
             let token = self.peek();
             match token.typ {
                 If => Ok(Statement::IfStmt(self.if_stmt()?)),
+                While => Ok(Statement::WhileStmt(self.while_stmt()?)),
                 Print => {
                     self.advance(); // discard print token
                     let expr = self.expression()?;
@@ -326,6 +335,19 @@ pub mod parser {
                 condition,
                 then_branch: Box::new(then_branch),
                 else_branch,
+            })
+        }
+
+        fn while_stmt(&mut self) -> Result<WhileStmt, ParseError> {
+            self.advance(); // discard while token
+            self.consume(&LeftParen, "Expect '(' after while.")?;
+            let condition = self.expression()?;
+            self.consume(&RightParen, "Expect ')' after while condition.")?;
+
+            let body = self.statement()?;
+            Ok(WhileStmt {
+                condition,
+                body: Box::new(body),
             })
         }
 
