@@ -263,12 +263,19 @@ pub mod interpreter {
 
     fn evaluate_logical(env: &mut Environment, logical: &Logical) -> Result<Value, RuntimeError> {
         let left_val = evaluate_expression(env, &logical.left)?;
-        let right_val = evaluate_expression(env, &logical.right)?;
         match logical.operator.typ {
             TokenType::Or => {
                 if is_truthy(&left_val) {
                     return Ok(left_val);
                 }
+                let right_val = evaluate_expression(env, &logical.right)?;
+                return Ok(right_val);
+            }
+            TokenType::And => {
+                if !is_truthy(&left_val) {
+                    return Ok(left_val);
+                }
+                let right_val = evaluate_expression(env, &logical.right)?;
                 return Ok(right_val);
             }
             // FIXME: this

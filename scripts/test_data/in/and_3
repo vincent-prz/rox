@@ -1,0 +1,2 @@
+// short circuiting of and should prevent the undefined variable error
+print false and x;
