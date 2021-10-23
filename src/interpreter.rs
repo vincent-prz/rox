@@ -89,6 +89,11 @@ impl Environment {
             },
         }
     }
+
+    fn copy_from(&mut self, src: Environment) {
+        self.values = src.values;
+        self.enclosing = src.enclosing;
+    }
 }
 
 pub mod interpreter {
@@ -165,15 +170,14 @@ pub mod interpreter {
         env: &mut Environment,
         declarations: &Vec<Declaration>,
     ) -> Result<(), RuntimeError> {
-        // FIXME: awfully cloning env here, because I didn't manage to make enclosing behind a ref
+        // FIXME: ugly clone here, because I didn't manage to make enclosing behind a ref
         // Indeed, I had lifetimes compiler issues I could not solve.
         let parent_env = env.clone();
         let mut new_env = Environment::new_with_enclosing(parent_env);
         for decl in declarations {
             execute_declaration(&mut new_env, decl)?;
         }
-        // I want env to become new_env.enclosing. FIXME: thhis doesn;t work with nested envs
-        env.values = new_env.enclosing.unwrap().values;
+        env.copy_from(*new_env.enclosing.unwrap());
         Ok(())
     }
 

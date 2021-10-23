@@ -1,0 +1,8 @@
+var x = nil;
+{
+	{ 
+        // we want to check that this assignment goes all the way up to the root scope
+		x = true;
+	}
+}
+print x;
