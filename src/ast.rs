@@ -312,12 +312,14 @@ pub mod parser {
                     Ok(Statement::PrintStmt(expr))
                 }
                 LeftBrace => Ok(Statement::Block(self.block()?)),
-                _ => {
-                    let expr = self.expression()?;
-                    self.consume(&Semicolon, "Expect ';' after expression.")?;
-                    Ok(Statement::ExprStmt(expr))
-                }
+                _ => self.expr_statement(),
             }
+        }
+
+        fn expr_statement(&mut self) -> Result<Statement, ParseError> {
+            let expr = self.expression()?;
+            self.consume(&Semicolon, "Expect ';' after expression.")?;
+            Ok(Statement::ExprStmt(expr))
         }
 
         fn if_stmt(&mut self) -> Result<IfStmt, ParseError> {
@@ -356,26 +358,49 @@ pub mod parser {
         fn for_stmt(&mut self) -> Result<Statement, ParseError> {
             self.advance(); // discard for token
             self.consume(&LeftParen, "Expect '(' after for.")?;
-            let initializer = self.var_decl()?;
-            let condition = self.expression()?;
+            let token = self.peek();
+            let initializer = match token.typ {
+                Semicolon => {
+                    self.advance(); // discard semi colon
+                    None
+                }
+                Var => Some(self.var_decl()?),
+                _ => Some(Declaration::Statement(self.expr_statement()?)),
+            };
+            let condition = match self.peek().typ {
+                Semicolon => None,
+                _ => Some(self.expression()?),
+            };
             self.consume(&Semicolon, "Expect ';' after loop condition.")?;
-            let increment = self.expression()?;
+            let increment = match self.peek().typ {
+                RightParen => None,
+                _ => Some(self.expression()?),
+            };
             self.consume(&RightParen, "Expect ')' after for clauses.")?;
             let body = self.statement()?;
 
-            let body_with_increment = Statement::Block(vec![
-                Declaration::Statement(body),
-                Declaration::Statement(Statement::ExprStmt(increment)),
-            ]);
+            let full_body = match increment {
+                None => body,
+                Some(incr) => Statement::Block(vec![
+                    Declaration::Statement(body),
+                    Declaration::Statement(Statement::ExprStmt(incr)),
+                ]),
+            };
 
             let while_stmt = WhileStmt {
-                condition,
-                body: Box::new(body_with_increment),
+                condition: match condition {
+                    Some(cond) => cond,
+                    None => Expr::Literal(Literal::True),
+                },
+                body: Box::new(full_body),
             };
-            Ok(Statement::Block(vec![
-                initializer,
-                Declaration::Statement(Statement::WhileStmt(while_stmt)),
-            ]))
+            Ok(match initializer {
+                None => Statement::WhileStmt(while_stmt),
+                Some(var_decl) => Statement::Block(vec![
+                    var_decl,
+                    Declaration::Statement(Statement::WhileStmt(while_stmt)),
+                ]),
+            })
         }
 
         fn block(&mut self) -> Result<Vec<Declaration>, ParseError> {
