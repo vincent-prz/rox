@@ -303,6 +303,8 @@ pub mod parser {
             match token.typ {
                 If => Ok(Statement::IfStmt(self.if_stmt()?)),
                 While => Ok(Statement::WhileStmt(self.while_stmt()?)),
+                // desugaring a for statement into while
+                For => self.for_stmt(),
                 Print => {
                     self.advance(); // discard print token
                     let expr = self.expression()?;
@@ -349,6 +351,31 @@ pub mod parser {
                 condition,
                 body: Box::new(body),
             })
+        }
+
+        fn for_stmt(&mut self) -> Result<Statement, ParseError> {
+            self.advance(); // discard for token
+            self.consume(&LeftParen, "Expect '(' after for.")?;
+            let initializer = self.var_decl()?;
+            let condition = self.expression()?;
+            self.consume(&Semicolon, "Expect ';' after loop condition.")?;
+            let increment = self.expression()?;
+            self.consume(&RightParen, "Expect ')' after for clauses.")?;
+            let body = self.statement()?;
+
+            let body_with_increment = Statement::Block(vec![
+                Declaration::Statement(body),
+                Declaration::Statement(Statement::ExprStmt(increment)),
+            ]);
+
+            let while_stmt = WhileStmt {
+                condition,
+                body: Box::new(body_with_increment),
+            };
+            Ok(Statement::Block(vec![
+                initializer,
+                Declaration::Statement(Statement::WhileStmt(while_stmt)),
+            ]))
         }
 
         fn block(&mut self) -> Result<Vec<Declaration>, ParseError> {
