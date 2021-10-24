@@ -1,0 +1,2 @@
+// short circuiting of or should prevent the undefined variable error
+print 1 or x;
