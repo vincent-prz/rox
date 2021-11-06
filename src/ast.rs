@@ -26,6 +26,7 @@ pub enum Expr {
     Literal(Literal),
     Unary(Unary),
     Binary(Binary),
+    Call(Call),
     Grouping(Grouping),
     Variable(Token),
     Assignment(Assignment),
@@ -38,6 +39,12 @@ pub enum Literal {
     True,
     False,
     Nil,
+}
+
+pub struct Call {
+    pub callee: Box<Expr>,
+    pub paren: Token,
+    pub arguments: Vec<Expr>,
 }
 
 pub struct Grouping {
@@ -89,6 +96,7 @@ pub mod printer {
             Expr::Variable(token) => token.lexeme.clone(),
             Expr::Assignment(assignment) => pretty_print_assignment(assignment),
             Expr::Logical(logical) => pretty_print_logical(logical),
+            Expr::Call(call) => pretty_print_call(call),
         }
     }
 
@@ -134,6 +142,11 @@ pub mod printer {
             assignment.name.lexeme,
             pretty_print(&assignment.value)
         )
+    }
+
+    fn pretty_print_call(call: &Call) -> String {
+        // FIXME: arguments are not displayed
+        format!("(call {})", pretty_print(&call.callee))
     }
 }
 
@@ -192,10 +205,11 @@ pub mod parser {
     comparison     → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
     term           → factor ( ( "-" | "+" ) factor )* ;
     factor         → unary ( ( "/" | "*" ) unary )* ;
-    unary          → ( "!" | "-" ) unary
-                   | primary ;
+    unary          → ( "!" | "-" ) unary | call
+    call           → primary ( "(" arguments? ")" )* ;
     primary        → NUMBER | STRING | "true" | "false" | "nil"
                    | "(" expression ")" | IDENTIFIER ;
+    arguments      → expression ( "," expression )* ;
 
     */
     pub struct Parser {
@@ -516,7 +530,22 @@ pub mod parser {
                     right: Box::new(right),
                 }));
             }
-            self.primary()
+            self.call()
+        }
+
+        fn call(&mut self) -> Result<Expr, ParseError> {
+            let mut result = self.primary()?;
+            while self.peek().typ == LeftParen {
+                let paren = self.advance();
+                let arguments = self.arguments()?;
+                result = Expr::Call(Call {
+                    callee: Box::new(result),
+                    paren,
+                    arguments,
+                });
+                self.consume(&RightParen, "Expect ')' after arguments.")?;
+            }
+            Ok(result)
         }
 
         fn primary(&mut self) -> Result<Expr, ParseError> {
@@ -546,6 +575,26 @@ pub mod parser {
                     token,
                 }),
             }
+        }
+
+        fn arguments(&mut self) -> Result<Vec<Expr>, ParseError> {
+            let mut arguments = vec![];
+            if self.peek().typ != RightParen {
+                loop {
+                    let expr = self.expression()?;
+                    arguments.push(expr);
+                    if !self.matches(&vec![Comma]) {
+                        break;
+                    }
+                }
+            }
+            if arguments.len() >= 255 {
+                return Err(ParseError {
+                    token: self.peek().clone(),
+                    message: "Can't have more than 255 arguments.".to_string(),
+                });
+            }
+            Ok(arguments)
         }
     }
 }

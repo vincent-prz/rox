@@ -1,6 +1,6 @@
 use crate::ast::{
-    Assignment, Binary, Declaration, Expr, IfStmt, Literal, Logical, Program, Statement, Unary,
-    VarDecl, WhileStmt,
+    Assignment, Binary, Call, Declaration, Expr, IfStmt, Literal, Logical, Program, Statement,
+    Unary, VarDecl, WhileStmt,
 };
 use crate::token::{Token, TokenType};
 use std::collections::HashMap;
@@ -13,6 +13,12 @@ pub enum Value {
     False,
     Str(String),
     Number(f64),
+    Callable(Callable),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Callable {
+    arity: usize,
 }
 
 impl fmt::Display for Value {
@@ -23,7 +29,16 @@ impl fmt::Display for Value {
             Value::False => write!(f, "false"),
             Value::Str(s) => write!(f, "{}", s),
             Value::Number(n) => write!(f, "{}", n),
+            // FIXME we probably want a better display for callables
+            Value::Callable(callable) => write!(f, "callable of arity {}", callable.arity),
         }
+    }
+}
+
+impl Callable {
+    fn call(&self, arguments: &Vec<Value>) -> Result<Value, RuntimeError> {
+        // XXX
+        Ok(Value::Nil)
     }
 }
 
@@ -203,6 +218,7 @@ pub mod interpreter {
             Expr::Variable(name) => env.get(name),
             Expr::Assignment(assignment) => evaluate_assignment(env, assignment),
             Expr::Logical(logical) => evaluate_logical(env, logical),
+            Expr::Call(call) => evaluate_call(env, call),
         }
     }
 
@@ -306,6 +322,34 @@ pub mod interpreter {
             }
             // This case should not occur if parsing was done correctly
             _ => panic!(),
+        }
+    }
+    fn evaluate_call(env: &mut Environment, call: &Call) -> Result<Value, RuntimeError> {
+        let callee = evaluate_expression(env, &call.callee)?;
+        let mut arguments = vec![];
+        for ast_arg in &call.arguments {
+            let current_arg = evaluate_expression(env, &ast_arg)?;
+            arguments.push(current_arg);
+        }
+        match callee {
+            Value::Callable(callable) => {
+                if arguments.len() != callable.arity {
+                    return Err(RuntimeError::new(
+                        call.paren.clone(),
+                        format!(
+                            "Expected {} arguments but got {}.",
+                            callable.arity,
+                            arguments.len()
+                        )
+                        .to_string(),
+                    ));
+                }
+                callable.call(&arguments)
+            }
+            _ => Err(RuntimeError::new(
+                call.paren.clone(),
+                "Can only call functions and classes".to_string(),
+            )),
         }
     }
 }
