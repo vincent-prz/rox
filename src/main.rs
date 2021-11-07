@@ -9,15 +9,15 @@ use std::io::Write;
 use std::process::exit;
 
 /// Try to parse and run an expression. This is useful for the REPL mode,
-/// where we want to be able to ro evaluate an expression (and not necessaritly a statement).
+/// where we want to be able to ro evaluate an expression (and not necessarily a statement).
 /// return None if the parsing failed.
-fn run_expr(tokens: &Vec<Token>, env: &mut Environment) -> Option<()> {
+fn run_expr(tokens: &Vec<Token>, env: &mut Option<Environment>) -> Option<()> {
     let mut parser = ast::parser::Parser::new(tokens.clone());
     let expr = match parser.expression() {
         Err(_) => return None,
         Ok(expr) => expr,
     };
-    match interpreter::evaluate_expression(env, &expr) {
+    match interpreter::evaluate_expression_(env, &expr) {
         Err(error) => {
             println!("{:?}", error);
         }
@@ -28,7 +28,7 @@ fn run_expr(tokens: &Vec<Token>, env: &mut Environment) -> Option<()> {
     Some(())
 }
 
-fn run(content: String, env: &mut Environment, prompt_mode: bool) {
+fn run(content: String, env: &mut Option<Environment>, prompt_mode: bool) {
     let scanner = Scanner::new(content);
     let tokens = match scanner.scan_tokens() {
         Err(errors) => {
@@ -61,7 +61,7 @@ fn run(content: String, env: &mut Environment, prompt_mode: bool) {
         }
         Ok(program) => program,
     };
-    match interpreter::interpret_with_env(env, &program) {
+    match interpreter::interpret(env, &program) {
         Ok(_) => {}
         Err(err) => {
             println!("{}\n[line {}]", err.message, err.token.line);
@@ -75,11 +75,12 @@ fn run(content: String, env: &mut Environment, prompt_mode: bool) {
 
 fn run_file(filename: &str) {
     let contents = fs::read_to_string(filename).expect("Something went wrong reading the file");
-    run(contents, &mut Environment::new(), false);
+    let mut env = None;
+    run(contents, &mut env, false);
 }
 
 fn run_prompt() {
-    let mut env = Environment::new();
+    let mut env = None;
     loop {
         print!("> ");
         io::stdout()

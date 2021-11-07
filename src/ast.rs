@@ -589,6 +589,7 @@ pub mod parser {
                 }
             }
             if arguments.len() >= 255 {
+                // FIXME: we don't want the parser to enter panic mode here
                 return Err(ParseError {
                     token: self.peek().clone(),
                     message: "Can't have more than 255 arguments.".to_string(),

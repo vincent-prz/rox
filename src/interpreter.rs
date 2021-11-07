@@ -5,6 +5,7 @@ use crate::ast::{
 use crate::token::{Token, TokenType};
 use std::collections::HashMap;
 use std::fmt;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Value {
@@ -17,8 +18,8 @@ pub enum Value {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct Callable {
-    arity: usize,
+pub enum Callable {
+    NativeClock,
 }
 
 impl fmt::Display for Value {
@@ -29,16 +30,35 @@ impl fmt::Display for Value {
             Value::False => write!(f, "false"),
             Value::Str(s) => write!(f, "{}", s),
             Value::Number(n) => write!(f, "{}", n),
-            // FIXME we probably want a better display for callables
-            Value::Callable(callable) => write!(f, "callable of arity {}", callable.arity),
+            Value::Callable(callable) => write!(f, "{}", callable),
         }
     }
 }
 
 impl Callable {
+    fn arity(&self) -> usize {
+        match &self {
+            NativeClock => 0,
+        }
+    }
     fn call(&self, arguments: &Vec<Value>) -> Result<Value, RuntimeError> {
-        // XXX
-        Ok(Value::Nil)
+        match &self {
+            NativeClock => {
+                let start = SystemTime::now();
+                let since_the_epoch = start
+                    .duration_since(UNIX_EPOCH)
+                    .expect("Time went backwards");
+                Ok(Value::Number(since_the_epoch.as_secs() as f64))
+            }
+        }
+    }
+}
+
+impl fmt::Display for Callable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Callable::NativeClock => write!(f, "<native fn>"),
+        }
     }
 }
 
@@ -115,17 +135,19 @@ pub mod interpreter {
 
     use super::*;
 
-    pub fn interpret(program: &Program) -> Result<(), RuntimeError> {
-        let mut env = Environment::new();
-        execute_program(&mut env, program)
+    fn get_globals_env() -> Environment {
+        let mut globals = Environment::new();
+        globals.define("clock".to_string(), Value::Callable(Callable::NativeClock));
+        globals
     }
 
-    // This variant of `interpret` is useful for the REPL
-    pub fn interpret_with_env(
-        env: &mut Environment,
-        program: &Program,
-    ) -> Result<(), RuntimeError> {
-        execute_program(env, program)
+    pub fn interpret(env: &mut Option<Environment>, program: &Program) -> Result<(), RuntimeError> {
+        let globals = get_globals_env();
+        env.get_or_insert(globals);
+        match env {
+            None => panic!(), // env is necessarily some at this point
+            Some(e) => execute_program(e, program),
+        }
     }
 
     fn execute_program(env: &mut Environment, program: &Program) -> Result<(), RuntimeError> {
@@ -208,8 +230,18 @@ pub mod interpreter {
         Ok(())
     }
 
-    // NOTE - public function for REPL
-    pub fn evaluate_expression(env: &mut Environment, expr: &Expr) -> Result<Value, RuntimeError> {
+    // NOTE - public variant of evaluate_expression for REPL
+    pub fn evaluate_expression_(
+        env: &mut Option<Environment>,
+        expr: &Expr,
+    ) -> Result<Value, RuntimeError> {
+        match env {
+            None => evaluate_expression(&mut get_globals_env(), expr),
+            Some(e) => evaluate_expression(e, expr),
+        }
+    }
+
+    fn evaluate_expression(env: &mut Environment, expr: &Expr) -> Result<Value, RuntimeError> {
         match expr {
             Expr::Literal(lit) => evaluate_literal(env, lit),
             Expr::Unary(unary) => evaluate_unary(env, unary),
@@ -333,12 +365,12 @@ pub mod interpreter {
         }
         match callee {
             Value::Callable(callable) => {
-                if arguments.len() != callable.arity {
+                if arguments.len() != callable.arity() {
                     return Err(RuntimeError::new(
                         call.paren.clone(),
                         format!(
                             "Expected {} arguments but got {}.",
-                            callable.arity,
+                            callable.arity(),
                             arguments.len()
                         )
                         .to_string(),
