@@ -36,39 +36,6 @@ impl fmt::Display for Value {
     }
 }
 
-impl Callable {
-    fn arity(&self) -> usize {
-        match &self {
-            Callable::NativeClock => 0,
-            Callable::Function(function) => function.params.len(),
-        }
-    }
-    fn call(&self, env: &Environment, arguments: Vec<Value>) -> Result<Value, RuntimeError> {
-        match &self {
-            Callable::NativeClock => {
-                let start = SystemTime::now();
-                let since_the_epoch = start
-                    .duration_since(UNIX_EPOCH)
-                    .expect("Time went backwards");
-                Ok(Value::Number(since_the_epoch.as_secs() as f64))
-            }
-            Callable::Function(function) => {
-                // FIXME: unnecessary env creation
-                let mut call_env = Environment::new_with_enclosing(env.clone());
-                // FIXME: use enumerate here
-                let mut index = 0;
-                for arg in arguments {
-                    // arg.len == params.len() should be checked by caller
-                    call_env.define(function.params[index].lexeme.clone(), arg);
-                    index += 1;
-                }
-                interpreter::execute_block(&mut call_env, &function.body)?;
-                Ok(Value::Nil)
-            }
-        }
-    }
-}
-
 impl fmt::Display for Callable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -227,8 +194,7 @@ pub mod interpreter {
         Ok(())
     }
 
-    // FIXME: should be private
-    pub fn execute_block(
+    fn execute_block(
         env: &mut Environment,
         declarations: &Vec<Declaration>,
     ) -> Result<(), RuntimeError> {
@@ -407,6 +373,38 @@ pub mod interpreter {
                 call.paren.clone(),
                 "Can only call functions and classes".to_string(),
             )),
+        }
+    }
+
+    impl Callable {
+        fn arity(&self) -> usize {
+            match &self {
+                Callable::NativeClock => 0,
+                Callable::Function(function) => function.params.len(),
+            }
+        }
+        fn call(&self, env: &Environment, arguments: Vec<Value>) -> Result<Value, RuntimeError> {
+            match &self {
+                Callable::NativeClock => {
+                    let start = SystemTime::now();
+                    let since_the_epoch = start
+                        .duration_since(UNIX_EPOCH)
+                        .expect("Time went backwards");
+                    Ok(Value::Number(since_the_epoch.as_secs() as f64))
+                }
+                Callable::Function(function) => {
+                    let mut call_env = Environment::new_with_enclosing(env.clone());
+                    // FIXME: use enumerate here
+                    let mut index = 0;
+                    for arg in arguments {
+                        // arg.len == params.len() should be checked by caller
+                        call_env.define(function.params[index].lexeme.clone(), arg);
+                        index += 1;
+                    }
+                    execute_block(&mut call_env, &function.body)?;
+                    Ok(Value::Nil)
+                }
+            }
         }
     }
 }
