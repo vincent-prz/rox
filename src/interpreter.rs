@@ -174,7 +174,15 @@ pub mod interpreter {
             Statement::ExprStmt(expr) => {
                 evaluate_expression(env, &expr)?;
             }
-            Statement::Block(declarations) => execute_block(env, declarations)?,
+            Statement::Block(declarations) => {
+                // FIXME: ugly clone here, because I didn't manage to make enclosing behind a ref
+                // Indeed, I had lifetimes compiler issues I could not solve.
+                let mut block_env = Environment::new_with_enclosing(env.clone());
+                execute_block(&mut block_env, declarations)?;
+                // load any change made to block_env.enclosing into env
+                // example where this is relevant: test scope_4
+                env.copy_from(*block_env.enclosing.unwrap());
+            }
             Statement::IfStmt(IfStmt {
                 condition,
                 then_branch,
@@ -198,14 +206,9 @@ pub mod interpreter {
         env: &mut Environment,
         declarations: &Vec<Declaration>,
     ) -> Result<(), RuntimeError> {
-        // FIXME: ugly clone here, because I didn't manage to make enclosing behind a ref
-        // Indeed, I had lifetimes compiler issues I could not solve.
-        let parent_env = env.clone();
-        let mut new_env = Environment::new_with_enclosing(parent_env);
         for decl in declarations {
-            execute_declaration(&mut new_env, decl)?;
+            execute_declaration(env, decl)?;
         }
-        env.copy_from(*new_env.enclosing.unwrap());
         Ok(())
     }
 
@@ -393,11 +396,13 @@ pub mod interpreter {
                     Ok(Value::Number(since_the_epoch.as_secs() as f64))
                 }
                 Callable::Function(function) => {
+                    // FIXME: ugly clone here, because I didn't manage to make enclosing behind a ref
+                    // Indeed, I had lifetimes compiler issues I could not solve.
                     let mut call_env = Environment::new_with_enclosing(env.clone());
                     // FIXME: use enumerate here
                     let mut index = 0;
                     for arg in arguments {
-                        // arg.len == params.len() should be checked by caller
+                        // NOTE - arg.len == params.len() should be checked by the caller
                         call_env.define(function.params[index].lexeme.clone(), arg);
                         index += 1;
                     }
