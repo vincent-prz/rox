@@ -1,19 +1,31 @@
 use crate::token::{Token, TokenType, TokenType::*};
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct Program {
     pub declarations: Vec<Declaration>,
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub enum Declaration {
+    FunDecl(FunDecl),
     VarDecl(VarDecl),
     Statement(Statement),
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub struct FunDecl {
+    pub name: Token,
+    pub params: Vec<Token>,
+    pub body: Vec<Declaration>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct VarDecl {
     pub identifier: Token,
     pub initializer: Option<Expr>,
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
     ExprStmt(Expr),
     IfStmt(IfStmt),
@@ -22,6 +34,7 @@ pub enum Statement {
     Block(Vec<Declaration>),
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub enum Expr {
     Literal(Literal),
     Unary(Unary),
@@ -33,6 +46,7 @@ pub enum Expr {
     Logical(Logical),
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub enum Literal {
     Number(f64),
     Str(String),
@@ -41,44 +55,52 @@ pub enum Literal {
     Nil,
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct Call {
     pub callee: Box<Expr>,
     pub paren: Token,
     pub arguments: Vec<Expr>,
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct Grouping {
     pub expression: Box<Expr>,
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct Unary {
     pub operator: Token,
     pub right: Box<Expr>,
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct Binary {
     pub left: Box<Expr>,
     pub operator: Token,
     pub right: Box<Expr>,
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct Logical {
     pub left: Box<Expr>,
     pub operator: Token,
     pub right: Box<Expr>,
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct Assignment {
     pub name: Token,
     pub value: Box<Expr>,
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct IfStmt {
     pub condition: Expr,
     pub then_branch: Box<Statement>,
     pub else_branch: Option<Box<Statement>>,
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct WhileStmt {
     pub condition: Expr,
     pub body: Box<Statement>,
@@ -181,9 +203,11 @@ pub mod parser {
 
     /*
     program        → declaration* EOF ;
-    declaration    → varDecl
-                   | statement ;
+    declaration    → funDecl | varDecl | statement ;
+    funDecl        → "fun" function ;
+    function       → IDENTIFIER "(" parameters? ")" block ;
     varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
+    parameters     → IDENTIFIER ( "," IDENTIFIER )* ;
     statement      → exprStmt
                    | ifStmt
                    | printStmt
@@ -244,7 +268,14 @@ pub mod parser {
             if self.is_at_end() {
                 return false;
             }
-            &self.peek().typ == typ
+            match &self.peek().typ {
+                // discard content of identifier for check
+                Identifier(_) => match typ {
+                    Identifier(_) => true,
+                    _ => false,
+                },
+                t => t == typ,
+            }
         }
 
         fn advance(&mut self) -> Token {
@@ -290,9 +321,47 @@ pub mod parser {
         fn declaration(&mut self) -> Result<Declaration, ParseError> {
             let token = self.peek();
             match token.typ {
+                Fun => self.fun_decl("function"),
                 Var => self.var_decl(),
                 _ => Ok(Declaration::Statement(self.statement()?)),
             }
+        }
+
+        fn fun_decl(&mut self, kind: &str) -> Result<Declaration, ParseError> {
+            self.advance(); // discard fun token
+                            // FIXME: need to create empty string to consume identifier
+            let name = self.consume(
+                &Identifier("".to_string()),
+                &format!("Expect {} name.", kind),
+            )?;
+            self.consume(&LeftParen, &format!("Expect '(' after {} name.", kind))?;
+            let params = self.parameters()?;
+            self.consume(&LeftBrace, &format!("Expect '{{' before {} body.", kind));
+            let body = self.block()?;
+            Ok(Declaration::FunDecl(FunDecl { name, params, body }))
+        }
+
+        fn parameters(&mut self) -> Result<Vec<Token>, ParseError> {
+            let mut params = vec![];
+            if self.peek().typ != RightParen {
+                loop {
+                    let identifier =
+                        self.consume(&Identifier("".to_string()), "Expect parameter name.")?;
+                    params.push(identifier);
+                    if !self.matches(&vec![Comma]) {
+                        break;
+                    }
+                }
+            }
+            if params.len() >= 255 {
+                // FIXME: we don't want the parser to enter panic mode here
+                return Err(ParseError {
+                    token: self.peek().clone(),
+                    message: "Can't have more than 255 parameters.".to_string(),
+                });
+            }
+            self.consume(&RightParen, "Expect ')' after parameters.");
+            Ok(params)
         }
 
         fn var_decl(&mut self) -> Result<Declaration, ParseError> {
@@ -325,7 +394,10 @@ pub mod parser {
                     self.consume(&Semicolon, "Expect ';' after value.")?;
                     Ok(Statement::PrintStmt(expr))
                 }
-                LeftBrace => Ok(Statement::Block(self.block()?)),
+                LeftBrace => {
+                    self.advance(); // discard left brace
+                    Ok(Statement::Block(self.block()?))
+                }
                 _ => self.expr_statement(),
             }
         }
@@ -417,8 +489,10 @@ pub mod parser {
             })
         }
 
+        // FIXME disagreeing with the book here - it seems we want to return Declaration
+        // and not Statements here ? See page 130
         fn block(&mut self) -> Result<Vec<Declaration>, ParseError> {
-            self.advance(); // discard left brace
+            // assumption: left brace has already been consumed
             let mut result = vec![];
             while self.peek().typ != RightBrace && !self.is_at_end() {
                 let decl = self.declaration()?;

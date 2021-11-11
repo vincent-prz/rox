@@ -1,6 +1,6 @@
 use crate::ast::{
-    Assignment, Binary, Call, Declaration, Expr, IfStmt, Literal, Logical, Program, Statement,
-    Unary, VarDecl, WhileStmt,
+    Assignment, Binary, Call, Declaration, Expr, FunDecl, IfStmt, Literal, Logical, Program,
+    Statement, Unary, VarDecl, WhileStmt,
 };
 use crate::token::{Token, TokenType};
 use std::collections::HashMap;
@@ -20,6 +20,7 @@ pub enum Value {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Callable {
     NativeClock,
+    Function(FunDecl),
 }
 
 impl fmt::Display for Value {
@@ -38,17 +39,31 @@ impl fmt::Display for Value {
 impl Callable {
     fn arity(&self) -> usize {
         match &self {
-            NativeClock => 0,
+            Callable::NativeClock => 0,
+            Callable::Function(function) => function.params.len(),
         }
     }
-    fn call(&self, arguments: &Vec<Value>) -> Result<Value, RuntimeError> {
+    fn call(&self, env: &Environment, arguments: Vec<Value>) -> Result<Value, RuntimeError> {
         match &self {
-            NativeClock => {
+            Callable::NativeClock => {
                 let start = SystemTime::now();
                 let since_the_epoch = start
                     .duration_since(UNIX_EPOCH)
                     .expect("Time went backwards");
                 Ok(Value::Number(since_the_epoch.as_secs() as f64))
+            }
+            Callable::Function(function) => {
+                // FIXME: unnecessary env creation
+                let mut call_env = Environment::new_with_enclosing(env.clone());
+                // FIXME: use enumerate here
+                let mut index = 0;
+                for arg in arguments {
+                    // arg.len == params.len() should be checked by caller
+                    call_env.define(function.params[index].lexeme.clone(), arg);
+                    index += 1;
+                }
+                interpreter::execute_block(&mut call_env, &function.body)?;
+                Ok(Value::Nil)
             }
         }
     }
@@ -58,6 +73,7 @@ impl fmt::Display for Callable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Callable::NativeClock => write!(f, "<native fn>"),
+            Callable::Function(func) => write!(f, "<fn {}>", func.name.lexeme),
         }
     }
 }
@@ -159,9 +175,17 @@ pub mod interpreter {
 
     fn execute_declaration(env: &mut Environment, decl: &Declaration) -> Result<(), RuntimeError> {
         match decl {
+            Declaration::FunDecl(fun_decl) => execute_fun_decl(env, fun_decl),
             Declaration::VarDecl(var_decl) => execute_var_decl(env, var_decl),
             Declaration::Statement(stmt) => execute_statement(env, stmt),
         }
+    }
+    fn execute_fun_decl(env: &mut Environment, decl: &FunDecl) -> Result<(), RuntimeError> {
+        env.define(
+            decl.name.lexeme.clone(),
+            Value::Callable(Callable::Function(decl.clone())),
+        );
+        Ok(())
     }
 
     fn execute_var_decl(env: &mut Environment, decl: &VarDecl) -> Result<(), RuntimeError> {
@@ -203,7 +227,8 @@ pub mod interpreter {
         Ok(())
     }
 
-    fn execute_block(
+    // FIXME: should be private
+    pub fn execute_block(
         env: &mut Environment,
         declarations: &Vec<Declaration>,
     ) -> Result<(), RuntimeError> {
@@ -376,7 +401,7 @@ pub mod interpreter {
                         .to_string(),
                     ));
                 }
-                callable.call(&arguments)
+                callable.call(env, arguments)
             }
             _ => Err(RuntimeError::new(
                 call.paren.clone(),
