@@ -71,6 +71,7 @@ fn run(content: String, env: &mut Option<Environment>, prompt_mode: bool) {
             return;
         }
         Err(_) => {
+            // this case should not oocur
             panic!();
         }
     }
