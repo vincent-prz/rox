@@ -1,5 +1,5 @@
 use rox::ast;
-use rox::interpreter::{interpreter, Environment};
+use rox::interpreter::{interpreter, Environment, FlowInterruption};
 use rox::scanner::Scanner;
 use rox::token::Token;
 use std::env;
@@ -63,12 +63,15 @@ fn run(content: String, env: &mut Option<Environment>, prompt_mode: bool) {
     };
     match interpreter::interpret(env, &program) {
         Ok(_) => {}
-        Err(err) => {
+        Err(FlowInterruption::RuntimeError(err)) => {
             println!("{}\n[line {}]", err.message, err.token.line);
             if !prompt_mode {
                 exit(70);
             }
             return;
+        }
+        Err(_) => {
+            panic!();
         }
     }
 }

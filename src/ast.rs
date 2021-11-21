@@ -30,6 +30,7 @@ pub enum Statement {
     ExprStmt(Expr),
     IfStmt(IfStmt),
     PrintStmt(Expr),
+    ReturnStmt(Option<Expr>),
     WhileStmt(WhileStmt),
     Block(Vec<Declaration>),
 }
@@ -211,6 +212,7 @@ pub mod parser {
     statement      → exprStmt
                    | ifStmt
                    | printStmt
+                   | returnStmt
                    | whileStmt
                    | block
     block          → "{" declaration* "}"
@@ -219,6 +221,7 @@ pub mod parser {
                    ( "else" statement )? ;
     whileStmt      → "while" "(" expression ")" statement;
     printStmt      → "print" expression ";" ;
+    returnStmt      → "return" expression? ";" ;
 
     expression     → assignment ;
     assignment     → IDENTIFIER "=" assignment
@@ -393,6 +396,16 @@ pub mod parser {
                     let expr = self.expression()?;
                     self.consume(&Semicolon, "Expect ';' after value.")?;
                     Ok(Statement::PrintStmt(expr))
+                }
+                Return => {
+                    self.advance(); // discard return token
+                    let expr = if self.peek().typ == Semicolon {
+                        None
+                    } else {
+                        Some(self.expression()?)
+                    };
+                    self.consume(&Semicolon, "Expect ';' after return value.")?;
+                    Ok(Statement::ReturnStmt(expr))
                 }
                 LeftBrace => {
                     self.advance(); // discard left brace

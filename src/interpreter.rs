@@ -46,6 +46,12 @@ impl fmt::Display for Callable {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum FlowInterruption {
+    ReturnValue(Value),
+    RuntimeError(RuntimeError),
+}
+
+#[derive(Debug, PartialEq)]
 pub struct RuntimeError {
     pub token: Token,
     pub message: String,
@@ -82,28 +88,28 @@ impl Environment {
         self.values.insert(name, value);
     }
 
-    fn assign(&mut self, name: &Token, value: Value) -> Result<(), RuntimeError> {
+    fn assign(&mut self, name: &Token, value: Value) -> Result<(), FlowInterruption> {
         if self.values.contains_key(&name.lexeme) {
             return Ok(self.define(name.lexeme.clone(), value));
         }
         match &mut self.enclosing {
             Some(enclosing) => enclosing.assign(name, value),
-            None => Err(RuntimeError::new(
+            None => Err(FlowInterruption::RuntimeError(RuntimeError::new(
                 name.clone(),
                 format!("Cannot assign undefined variable {}.", name.lexeme),
-            )),
+            ))),
         }
     }
 
-    fn get(&self, name: &Token) -> Result<Value, RuntimeError> {
+    fn get(&self, name: &Token) -> Result<Value, FlowInterruption> {
         match self.values.get(&name.lexeme) {
             Some(value) => Ok(value.clone()),
             None => match &self.enclosing {
                 Some(enclosing) => enclosing.get(name),
-                None => Err(RuntimeError::new(
+                None => Err(FlowInterruption::RuntimeError(RuntimeError::new(
                     name.clone(),
                     format!("Undefined variable {}.", name.lexeme),
-                )),
+                ))),
             },
         }
     }
@@ -124,7 +130,10 @@ pub mod interpreter {
         globals
     }
 
-    pub fn interpret(env: &mut Option<Environment>, program: &Program) -> Result<(), RuntimeError> {
+    pub fn interpret(
+        env: &mut Option<Environment>,
+        program: &Program,
+    ) -> Result<(), FlowInterruption> {
         let globals = get_globals_env();
         env.get_or_insert(globals);
         match env {
@@ -133,21 +142,24 @@ pub mod interpreter {
         }
     }
 
-    fn execute_program(env: &mut Environment, program: &Program) -> Result<(), RuntimeError> {
+    fn execute_program(env: &mut Environment, program: &Program) -> Result<(), FlowInterruption> {
         for decl in &program.declarations {
             execute_declaration(env, &decl)?;
         }
         Ok(())
     }
 
-    fn execute_declaration(env: &mut Environment, decl: &Declaration) -> Result<(), RuntimeError> {
+    fn execute_declaration(
+        env: &mut Environment,
+        decl: &Declaration,
+    ) -> Result<(), FlowInterruption> {
         match decl {
             Declaration::FunDecl(fun_decl) => execute_fun_decl(env, fun_decl),
             Declaration::VarDecl(var_decl) => execute_var_decl(env, var_decl),
             Declaration::Statement(stmt) => execute_statement(env, stmt),
         }
     }
-    fn execute_fun_decl(env: &mut Environment, decl: &FunDecl) -> Result<(), RuntimeError> {
+    fn execute_fun_decl(env: &mut Environment, decl: &FunDecl) -> Result<(), FlowInterruption> {
         env.define(
             decl.name.lexeme.clone(),
             Value::Callable(Callable::Function(decl.clone())),
@@ -155,7 +167,7 @@ pub mod interpreter {
         Ok(())
     }
 
-    fn execute_var_decl(env: &mut Environment, decl: &VarDecl) -> Result<(), RuntimeError> {
+    fn execute_var_decl(env: &mut Environment, decl: &VarDecl) -> Result<(), FlowInterruption> {
         let varname = decl.identifier.lexeme.clone();
         let value = match &decl.initializer {
             None => Value::Nil,
@@ -165,11 +177,20 @@ pub mod interpreter {
         Ok(())
     }
 
-    fn execute_statement(env: &mut Environment, stmt: &Statement) -> Result<(), RuntimeError> {
+    fn execute_statement(env: &mut Environment, stmt: &Statement) -> Result<(), FlowInterruption> {
         match stmt {
             Statement::PrintStmt(expr) => {
                 let value = evaluate_expression(env, &expr)?;
                 println!("{}", value);
+            }
+            Statement::ReturnStmt(option_expr) => {
+                let return_value = match option_expr {
+                    None => Value::Nil,
+                    Some(expr) => evaluate_expression(env, expr)?,
+                };
+                // propagating return value as error to make sure the `return` statement
+                // interrupts the function flow
+                return Err(FlowInterruption::ReturnValue(return_value));
             }
             Statement::ExprStmt(expr) => {
                 evaluate_expression(env, &expr)?;
@@ -205,7 +226,7 @@ pub mod interpreter {
     fn execute_block(
         env: &mut Environment,
         declarations: &Vec<Declaration>,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<(), FlowInterruption> {
         for decl in declarations {
             execute_declaration(env, decl)?;
         }
@@ -215,7 +236,7 @@ pub mod interpreter {
     fn execute_while_statement(
         env: &mut Environment,
         while_stmt: &WhileStmt,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<(), FlowInterruption> {
         let condition = &while_stmt.condition;
         let body = &while_stmt.body;
         while is_truthy(&evaluate_expression(env, &condition)?) {
@@ -228,14 +249,14 @@ pub mod interpreter {
     pub fn evaluate_expression_(
         env: &mut Option<Environment>,
         expr: &Expr,
-    ) -> Result<Value, RuntimeError> {
+    ) -> Result<Value, FlowInterruption> {
         match env {
             None => evaluate_expression(&mut get_globals_env(), expr),
             Some(e) => evaluate_expression(e, expr),
         }
     }
 
-    fn evaluate_expression(env: &mut Environment, expr: &Expr) -> Result<Value, RuntimeError> {
+    fn evaluate_expression(env: &mut Environment, expr: &Expr) -> Result<Value, FlowInterruption> {
         match expr {
             Expr::Literal(lit) => evaluate_literal(env, lit),
             Expr::Unary(unary) => evaluate_unary(env, unary),
@@ -248,7 +269,7 @@ pub mod interpreter {
         }
     }
 
-    fn evaluate_literal(env: &Environment, lit: &Literal) -> Result<Value, RuntimeError> {
+    fn evaluate_literal(env: &Environment, lit: &Literal) -> Result<Value, FlowInterruption> {
         Ok(match lit {
             Literal::Nil => Value::Nil,
             Literal::True => Value::True,
@@ -258,62 +279,76 @@ pub mod interpreter {
         })
     }
 
-    fn evaluate_unary(env: &mut Environment, unary: &Unary) -> Result<Value, RuntimeError> {
+    fn evaluate_unary(env: &mut Environment, unary: &Unary) -> Result<Value, FlowInterruption> {
         let right_val = evaluate_expression(env, &unary.right)?;
         match unary.operator.typ {
             TokenType::Minus => match right_val {
                 Value::Number(n) => Ok(Value::Number(-n)),
-                _ => Err(RuntimeError::new(
+                _ => Err(FlowInterruption::RuntimeError(RuntimeError::new(
                     unary.operator.clone(),
                     "Operand must be a number.".to_string(),
-                )),
+                ))),
             },
             TokenType::Bang => Ok(bool_to_val(!is_truthy(&right_val))),
             _ => panic!(),
         }
     }
 
-    fn evaluate_binary(env: &mut Environment, binary: &Binary) -> Result<Value, RuntimeError> {
+    fn evaluate_binary(env: &mut Environment, binary: &Binary) -> Result<Value, FlowInterruption> {
         let left_val = evaluate_expression(env, &binary.left)?;
         let right_val = evaluate_expression(env, &binary.right)?;
         match binary.operator.typ {
             TokenType::Plus => match (left_val, right_val) {
                 (Value::Number(x), Value::Number(y)) => Ok(Value::Number(x + y)),
                 (Value::Str(x), Value::Str(y)) => Ok(Value::Str(format!("{}{}", x, y))),
-                _ => Err(RuntimeError::new(
+                _ => Err(FlowInterruption::RuntimeError(RuntimeError::new(
                     binary.operator.clone(),
                     "Operands must be two numbers or two strings.".to_string(),
-                )),
+                ))),
             },
             TokenType::Minus => match (left_val, right_val) {
                 (Value::Number(x), Value::Number(y)) => Ok(Value::Number(x - y)),
-                _ => Err(make_numbers_operand_error(&binary.operator)),
+                _ => Err(FlowInterruption::RuntimeError(make_numbers_operand_error(
+                    &binary.operator,
+                ))),
             },
             TokenType::Star => match (left_val, right_val) {
                 (Value::Number(x), Value::Number(y)) => Ok(Value::Number(x * y)),
-                _ => Err(make_numbers_operand_error(&binary.operator)),
+                _ => Err(FlowInterruption::RuntimeError(make_numbers_operand_error(
+                    &binary.operator,
+                ))),
             },
             TokenType::Slash => match (left_val, right_val) {
                 (Value::Number(x), Value::Number(y)) => Ok(Value::Number(x / y)),
-                _ => Err(make_numbers_operand_error(&binary.operator)),
+                _ => Err(FlowInterruption::RuntimeError(make_numbers_operand_error(
+                    &binary.operator,
+                ))),
             },
             TokenType::EqualEqual => Ok(bool_to_val(left_val == right_val)),
             TokenType::BangEqual => Ok(bool_to_val(left_val != right_val)),
             TokenType::LessEqual => match (left_val, right_val) {
                 (Value::Number(x), Value::Number(y)) => Ok(bool_to_val(x <= y)),
-                _ => Err(make_numbers_operand_error(&binary.operator)),
+                _ => Err(FlowInterruption::RuntimeError(make_numbers_operand_error(
+                    &binary.operator,
+                ))),
             },
             TokenType::Less => match (left_val, right_val) {
                 (Value::Number(x), Value::Number(y)) => Ok(bool_to_val(x < y)),
-                _ => Err(make_numbers_operand_error(&binary.operator)),
+                _ => Err(FlowInterruption::RuntimeError(make_numbers_operand_error(
+                    &binary.operator,
+                ))),
             },
             TokenType::GreaterEqual => match (left_val, right_val) {
                 (Value::Number(x), Value::Number(y)) => Ok(bool_to_val(x >= y)),
-                _ => Err(make_numbers_operand_error(&binary.operator)),
+                _ => Err(FlowInterruption::RuntimeError(make_numbers_operand_error(
+                    &binary.operator,
+                ))),
             },
             TokenType::Greater => match (left_val, right_val) {
                 (Value::Number(x), Value::Number(y)) => Ok(bool_to_val(x > y)),
-                _ => Err(make_numbers_operand_error(&binary.operator)),
+                _ => Err(FlowInterruption::RuntimeError(make_numbers_operand_error(
+                    &binary.operator,
+                ))),
             },
             // FIXME: this
             _ => panic!(),
@@ -323,13 +358,16 @@ pub mod interpreter {
     fn evaluate_assignment(
         env: &mut Environment,
         assignment: &Assignment,
-    ) -> Result<Value, RuntimeError> {
+    ) -> Result<Value, FlowInterruption> {
         let value = evaluate_expression(env, &assignment.value)?;
         env.assign(&assignment.name, value.clone())?;
         Ok(value)
     }
 
-    fn evaluate_logical(env: &mut Environment, logical: &Logical) -> Result<Value, RuntimeError> {
+    fn evaluate_logical(
+        env: &mut Environment,
+        logical: &Logical,
+    ) -> Result<Value, FlowInterruption> {
         let left_val = evaluate_expression(env, &logical.left)?;
         match logical.operator.typ {
             TokenType::Or => {
@@ -350,7 +388,7 @@ pub mod interpreter {
             _ => panic!(),
         }
     }
-    fn evaluate_call(env: &mut Environment, call: &Call) -> Result<Value, RuntimeError> {
+    fn evaluate_call(env: &mut Environment, call: &Call) -> Result<Value, FlowInterruption> {
         let callee = evaluate_expression(env, &call.callee)?;
         let mut arguments = vec![];
         for ast_arg in &call.arguments {
@@ -360,7 +398,7 @@ pub mod interpreter {
         match callee {
             Value::Callable(callable) => {
                 if arguments.len() != callable.arity() {
-                    return Err(RuntimeError::new(
+                    return Err(FlowInterruption::RuntimeError(RuntimeError::new(
                         call.paren.clone(),
                         format!(
                             "Expected {} arguments but got {}.",
@@ -368,14 +406,17 @@ pub mod interpreter {
                             arguments.len()
                         )
                         .to_string(),
-                    ));
+                    )));
                 }
-                callable.call(env, arguments)
+                match callable.call(env, arguments) {
+                    Err(FlowInterruption::ReturnValue(val)) => Ok(val),
+                    x => x,
+                }
             }
-            _ => Err(RuntimeError::new(
+            _ => Err(FlowInterruption::RuntimeError(RuntimeError::new(
                 call.paren.clone(),
                 "Can only call functions and classes".to_string(),
-            )),
+            ))),
         }
     }
 
@@ -386,7 +427,11 @@ pub mod interpreter {
                 Callable::Function(function) => function.params.len(),
             }
         }
-        fn call(&self, env: &Environment, arguments: Vec<Value>) -> Result<Value, RuntimeError> {
+        fn call(
+            &self,
+            env: &Environment,
+            arguments: Vec<Value>,
+        ) -> Result<Value, FlowInterruption> {
             match &self {
                 Callable::NativeClock => {
                     let start = SystemTime::now();
