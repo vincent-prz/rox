@@ -9,7 +9,7 @@ use std::fmt;
 use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 pub enum Value {
     Nil,
     True,
@@ -19,10 +19,16 @@ pub enum Value {
     Callable(Callable),
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 pub enum Callable {
     NativeClock,
-    Function(FunDecl),
+    Function(Function),
+}
+
+#[derive(Debug, Clone)]
+pub struct Function {
+    decl: FunDecl,
+    closure: Rc<RefCell<Environment>>,
 }
 
 impl fmt::Display for Value {
@@ -38,16 +44,29 @@ impl fmt::Display for Value {
     }
 }
 
-impl fmt::Display for Callable {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Callable::NativeClock => write!(f, "<native fn>"),
-            Callable::Function(func) => write!(f, "<fn {}>", func.name.lexeme),
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Value::Nil, Value::Nil) => true,
+            (Value::True, Value::True) => true,
+            (Value::False, Value::False) => true,
+            (Value::Str(s1), Value::Str(s2)) => s1 == s2,
+            (Value::Number(n1), Value::Number(n2)) => n1 == n2,
+            _ => false, // functions are never equal to anything
         }
     }
 }
 
-#[derive(Debug, PartialEq)]
+impl fmt::Display for Callable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Callable::NativeClock => write!(f, "<native fn>"),
+            Callable::Function(func) => write!(f, "<fn {}>", func.decl.name.lexeme),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum FlowInterruption {
     ReturnValue(Value),
     RuntimeError(RuntimeError),
@@ -164,7 +183,10 @@ pub mod interpreter {
     ) -> Result<(), FlowInterruption> {
         env.borrow_mut().define(
             decl.name.lexeme.clone(),
-            Value::Callable(Callable::Function(decl.clone())),
+            Value::Callable(Callable::Function(Function {
+                decl: decl.clone(),
+                closure: Rc::clone(&env),
+            })),
         );
         Ok(())
     }
@@ -264,7 +286,7 @@ pub mod interpreter {
         expr: &Expr,
     ) -> Result<Value, FlowInterruption> {
         match expr {
-            Expr::Literal(lit) => evaluate_literal(&env.borrow(), lit),
+            Expr::Literal(lit) => evaluate_literal(lit),
             Expr::Unary(unary) => evaluate_unary(env, unary),
             Expr::Binary(binary) => evaluate_binary(env, binary),
             Expr::Grouping(group) => evaluate_expression(env, &group.expression),
@@ -275,7 +297,7 @@ pub mod interpreter {
         }
     }
 
-    fn evaluate_literal(env: &Environment, lit: &Literal) -> Result<Value, FlowInterruption> {
+    fn evaluate_literal(lit: &Literal) -> Result<Value, FlowInterruption> {
         Ok(match lit {
             Literal::Nil => Value::Nil,
             Literal::True => Value::True,
@@ -425,7 +447,7 @@ pub mod interpreter {
                         .to_string(),
                     )));
                 }
-                match callable.call(env, arguments) {
+                match callable.call(arguments) {
                     Err(FlowInterruption::ReturnValue(val)) => Ok(val),
                     x => x,
                 }
@@ -441,14 +463,10 @@ pub mod interpreter {
         fn arity(&self) -> usize {
             match &self {
                 Callable::NativeClock => 0,
-                Callable::Function(function) => function.params.len(),
+                Callable::Function(function) => function.decl.params.len(),
             }
         }
-        fn call(
-            &self,
-            env: Rc<RefCell<Environment>>,
-            arguments: Vec<Value>,
-        ) -> Result<Value, FlowInterruption> {
+        fn call(&self, arguments: Vec<Value>) -> Result<Value, FlowInterruption> {
             match &self {
                 Callable::NativeClock => {
                     let start = SystemTime::now();
@@ -458,17 +476,19 @@ pub mod interpreter {
                     Ok(Value::Number(since_the_epoch.as_secs() as f64))
                 }
                 Callable::Function(function) => {
-                    let call_env = Rc::new(RefCell::new(Environment::new_with_enclosing(env)));
+                    let call_env = Rc::new(RefCell::new(Environment::new_with_enclosing(
+                        Rc::clone(&function.closure),
+                    )));
                     // FIXME: use enumerate here
                     let mut index = 0;
                     for arg in arguments {
                         // NOTE - arg.len == params.len() should be checked by the caller
                         call_env
                             .borrow_mut()
-                            .define(function.params[index].lexeme.clone(), arg);
+                            .define(function.decl.params[index].lexeme.clone(), arg);
                         index += 1;
                     }
-                    execute_block(call_env, &function.body)?;
+                    execute_block(call_env, &function.decl.body)?;
                     Ok(Value::Nil)
                 }
             }
