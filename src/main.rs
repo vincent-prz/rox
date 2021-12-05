@@ -2,16 +2,18 @@ use rox::ast;
 use rox::interpreter::{interpreter, Environment, FlowInterruption};
 use rox::scanner::Scanner;
 use rox::token::Token;
+use std::cell::RefCell;
 use std::env;
 use std::fs;
 use std::io;
 use std::io::Write;
 use std::process::exit;
+use std::rc::Rc;
 
 /// Try to parse and run an expression. This is useful for the REPL mode,
 /// where we want to be able to ro evaluate an expression (and not necessarily a statement).
 /// return None if the parsing failed.
-fn run_expr(tokens: &Vec<Token>, env: &mut Option<Environment>) -> Option<()> {
+fn run_expr(tokens: &Vec<Token>, env: Option<Rc<RefCell<Environment>>>) -> Option<()> {
     let mut parser = ast::parser::Parser::new(tokens.clone());
     let expr = match parser.expression() {
         Err(_) => return None,
@@ -28,7 +30,7 @@ fn run_expr(tokens: &Vec<Token>, env: &mut Option<Environment>) -> Option<()> {
     Some(())
 }
 
-fn run(content: String, env: &mut Option<Environment>, prompt_mode: bool) {
+fn run(content: String, env: Option<Rc<RefCell<Environment>>>, prompt_mode: bool) {
     let scanner = Scanner::new(content);
     let tokens = match scanner.scan_tokens() {
         Err(errors) => {
@@ -44,10 +46,10 @@ fn run(content: String, env: &mut Option<Environment>, prompt_mode: bool) {
     };
 
     if prompt_mode {
-        match run_expr(&tokens, env) {
-            None => {}
-            Some(()) => return,
-        }
+        // match run_expr(&tokens, env) {
+        //     None => {}
+        //     Some(()) => return,
+        // }
     }
 
     let mut parser = ast::parser::Parser::new(tokens);
@@ -79,12 +81,11 @@ fn run(content: String, env: &mut Option<Environment>, prompt_mode: bool) {
 
 fn run_file(filename: &str) {
     let contents = fs::read_to_string(filename).expect("Something went wrong reading the file");
-    let mut env = None;
-    run(contents, &mut env, false);
+    run(contents, None, false);
 }
 
 fn run_prompt() {
-    let mut env = None;
+    // let env = None;
     loop {
         print!("> ");
         io::stdout()
@@ -97,7 +98,7 @@ fn run_prompt() {
         if line == "\n" {
             break;
         }
-        run(line, &mut env, true)
+        // run(line, Rc::clone(&env), true)
     }
 }
 
