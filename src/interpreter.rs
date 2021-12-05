@@ -140,21 +140,21 @@ pub mod interpreter {
 
     use super::*;
 
-    fn get_globals_env() -> Environment {
+    pub fn get_default_globals() -> Environment {
         let mut globals = Environment::new();
         globals.define("clock".to_string(), Value::Callable(Callable::NativeClock));
         globals
     }
 
-    pub fn interpret(
-        env: Option<Rc<RefCell<Environment>>>,
+    pub fn interpret(program: &Program) -> Result<(), FlowInterruption> {
+        execute_program(Rc::new(RefCell::new(get_default_globals())), program)
+    }
+
+    pub fn interpret_with_env(
+        env: Rc<RefCell<Environment>>,
         program: &Program,
     ) -> Result<(), FlowInterruption> {
-        let globals = get_globals_env();
-        match env {
-            None => execute_program(Rc::new(RefCell::new(globals)), program),
-            Some(e) => execute_program(e, program),
-        }
+        execute_program(env, program)
     }
 
     fn execute_program(
@@ -270,18 +270,8 @@ pub mod interpreter {
         Ok(())
     }
 
-    // NOTE - public variant of evaluate_expression for REPL
-    pub fn evaluate_expression_(
-        env: Option<Rc<RefCell<Environment>>>,
-        expr: &Expr,
-    ) -> Result<Value, FlowInterruption> {
-        match env {
-            None => evaluate_expression(Rc::new(RefCell::new(get_globals_env())), expr),
-            Some(e) => evaluate_expression(e, expr),
-        }
-    }
-
-    fn evaluate_expression(
+    // NOTE - public REPL
+    pub fn evaluate_expression(
         env: Rc<RefCell<Environment>>,
         expr: &Expr,
     ) -> Result<Value, FlowInterruption> {
