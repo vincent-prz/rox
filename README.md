@@ -8,6 +8,7 @@ Tree walk interpreter for the [Lox language](http://www.craftinginterpreters.com
 - [x] Variable declaration and assignment
 - [x] Scopes
 - [x] Control Flow (if statements, while and foor loops)
-- [ ] Functions
+- [x] Functions
+- [x] Closures
 - [ ] Classes
 - [ ] Inheritance
