@@ -3,11 +3,13 @@ use crate::ast::{
     Statement, Unary, VarDecl, WhileStmt,
 };
 use crate::token::{Token, TokenType};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
+use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 pub enum Value {
     Nil,
     True,
@@ -17,10 +19,16 @@ pub enum Value {
     Callable(Callable),
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 pub enum Callable {
     NativeClock,
-    Function(FunDecl),
+    Function(Function),
+}
+
+#[derive(Debug, Clone)]
+pub struct Function {
+    decl: FunDecl,
+    closure: Rc<RefCell<Environment>>,
 }
 
 impl fmt::Display for Value {
@@ -36,16 +44,29 @@ impl fmt::Display for Value {
     }
 }
 
-impl fmt::Display for Callable {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Callable::NativeClock => write!(f, "<native fn>"),
-            Callable::Function(func) => write!(f, "<fn {}>", func.name.lexeme),
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Value::Nil, Value::Nil) => true,
+            (Value::True, Value::True) => true,
+            (Value::False, Value::False) => true,
+            (Value::Str(s1), Value::Str(s2)) => s1 == s2,
+            (Value::Number(n1), Value::Number(n2)) => n1 == n2,
+            _ => false, // functions are never equal to anything
         }
     }
 }
 
-#[derive(Debug, PartialEq)]
+impl fmt::Display for Callable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Callable::NativeClock => write!(f, "<native fn>"),
+            Callable::Function(func) => write!(f, "<fn {}>", func.decl.name.lexeme),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum FlowInterruption {
     ReturnValue(Value),
     RuntimeError(RuntimeError),
@@ -66,7 +87,7 @@ impl RuntimeError {
 #[derive(Clone, Debug)]
 pub struct Environment {
     values: HashMap<String, Value>,
-    enclosing: Option<Box<Environment>>,
+    enclosing: Option<Rc<RefCell<Environment>>>,
 }
 
 impl Environment {
@@ -77,10 +98,10 @@ impl Environment {
         }
     }
 
-    fn new_with_enclosing(env: Environment) -> Self {
+    fn new_with_enclosing(env: Rc<RefCell<Environment>>) -> Self {
         Environment {
             values: HashMap::new(),
-            enclosing: Some(Box::new(env)),
+            enclosing: Some(env),
         }
     }
 
@@ -93,7 +114,7 @@ impl Environment {
             return Ok(self.define(name.lexeme.clone(), value));
         }
         match &mut self.enclosing {
-            Some(enclosing) => enclosing.assign(name, value),
+            Some(enclosing) => enclosing.borrow_mut().assign(name, value),
             None => Err(FlowInterruption::RuntimeError(RuntimeError::new(
                 name.clone(),
                 format!("Cannot assign undefined variable {}.", name.lexeme),
@@ -105,7 +126,7 @@ impl Environment {
         match self.values.get(&name.lexeme) {
             Some(value) => Ok(value.clone()),
             None => match &self.enclosing {
-                Some(enclosing) => enclosing.get(name),
+                Some(enclosing) => enclosing.borrow().get(name),
                 None => Err(FlowInterruption::RuntimeError(RuntimeError::new(
                     name.clone(),
                     format!("Undefined variable {}.", name.lexeme),
@@ -113,44 +134,41 @@ impl Environment {
             },
         }
     }
-
-    fn copy_from(&mut self, src: Environment) {
-        self.values = src.values;
-        self.enclosing = src.enclosing;
-    }
 }
 
 pub mod interpreter {
 
     use super::*;
 
-    fn get_globals_env() -> Environment {
+    pub fn get_default_globals() -> Environment {
         let mut globals = Environment::new();
         globals.define("clock".to_string(), Value::Callable(Callable::NativeClock));
         globals
     }
 
-    pub fn interpret(
-        env: &mut Option<Environment>,
-        program: &Program,
-    ) -> Result<(), FlowInterruption> {
-        let globals = get_globals_env();
-        env.get_or_insert(globals);
-        match env {
-            None => panic!(), // env is necessarily some at this point
-            Some(e) => execute_program(e, program),
-        }
+    pub fn interpret(program: &Program) -> Result<(), FlowInterruption> {
+        execute_program(Rc::new(RefCell::new(get_default_globals())), program)
     }
 
-    fn execute_program(env: &mut Environment, program: &Program) -> Result<(), FlowInterruption> {
+    pub fn interpret_with_env(
+        env: Rc<RefCell<Environment>>,
+        program: &Program,
+    ) -> Result<(), FlowInterruption> {
+        execute_program(env, program)
+    }
+
+    fn execute_program(
+        env: Rc<RefCell<Environment>>,
+        program: &Program,
+    ) -> Result<(), FlowInterruption> {
         for decl in &program.declarations {
-            execute_declaration(env, &decl)?;
+            execute_declaration(Rc::clone(&env), &decl)?;
         }
         Ok(())
     }
 
     fn execute_declaration(
-        env: &mut Environment,
+        env: Rc<RefCell<Environment>>,
         decl: &Declaration,
     ) -> Result<(), FlowInterruption> {
         match decl {
@@ -159,25 +177,37 @@ pub mod interpreter {
             Declaration::Statement(stmt) => execute_statement(env, stmt),
         }
     }
-    fn execute_fun_decl(env: &mut Environment, decl: &FunDecl) -> Result<(), FlowInterruption> {
-        env.define(
+    fn execute_fun_decl(
+        env: Rc<RefCell<Environment>>,
+        decl: &FunDecl,
+    ) -> Result<(), FlowInterruption> {
+        env.borrow_mut().define(
             decl.name.lexeme.clone(),
-            Value::Callable(Callable::Function(decl.clone())),
+            Value::Callable(Callable::Function(Function {
+                decl: decl.clone(),
+                closure: Rc::clone(&env),
+            })),
         );
         Ok(())
     }
 
-    fn execute_var_decl(env: &mut Environment, decl: &VarDecl) -> Result<(), FlowInterruption> {
+    fn execute_var_decl(
+        env: Rc<RefCell<Environment>>,
+        decl: &VarDecl,
+    ) -> Result<(), FlowInterruption> {
         let varname = decl.identifier.lexeme.clone();
         let value = match &decl.initializer {
             None => Value::Nil,
-            Some(expr) => evaluate_expression(env, &expr)?,
+            Some(expr) => evaluate_expression(Rc::clone(&env), &expr)?,
         };
-        env.define(varname, value);
+        env.borrow_mut().define(varname, value);
         Ok(())
     }
 
-    fn execute_statement(env: &mut Environment, stmt: &Statement) -> Result<(), FlowInterruption> {
+    fn execute_statement(
+        env: Rc<RefCell<Environment>>,
+        stmt: &Statement,
+    ) -> Result<(), FlowInterruption> {
         match stmt {
             Statement::PrintStmt(expr) => {
                 let value = evaluate_expression(env, &expr)?;
@@ -196,21 +226,16 @@ pub mod interpreter {
                 evaluate_expression(env, &expr)?;
             }
             Statement::Block(declarations) => {
-                // FIXME: ugly clone here, because I didn't manage to make enclosing behind a ref
-                // Indeed, I had lifetimes compiler issues I could not solve.
-                let mut block_env = Environment::new_with_enclosing(env.clone());
-                execute_block(&mut block_env, declarations)?;
-                // load any change made to block_env.enclosing into env
-                // example where this is relevant: test scope_4
-                env.copy_from(*block_env.enclosing.unwrap());
+                let block_env = Rc::new(RefCell::new(Environment::new_with_enclosing(env)));
+                execute_block(block_env, declarations)?;
             }
             Statement::IfStmt(IfStmt {
                 condition,
                 then_branch,
                 else_branch,
             }) => {
-                if is_truthy(&evaluate_expression(env, condition)?) {
-                    execute_statement(env, then_branch)?;
+                if is_truthy(&evaluate_expression(Rc::clone(&env), condition)?) {
+                    execute_statement(Rc::clone(&env), then_branch)?;
                 } else {
                     match else_branch {
                         None => {}
@@ -224,52 +249,45 @@ pub mod interpreter {
     }
 
     fn execute_block(
-        env: &mut Environment,
+        env: Rc<RefCell<Environment>>,
         declarations: &Vec<Declaration>,
     ) -> Result<(), FlowInterruption> {
         for decl in declarations {
-            execute_declaration(env, decl)?;
+            execute_declaration(Rc::clone(&env), decl)?;
         }
         Ok(())
     }
 
     fn execute_while_statement(
-        env: &mut Environment,
+        env: Rc<RefCell<Environment>>,
         while_stmt: &WhileStmt,
     ) -> Result<(), FlowInterruption> {
         let condition = &while_stmt.condition;
         let body = &while_stmt.body;
-        while is_truthy(&evaluate_expression(env, &condition)?) {
-            execute_statement(env, &body)?;
+        while is_truthy(&evaluate_expression(Rc::clone(&env), &condition)?) {
+            execute_statement(Rc::clone(&env), &body)?;
         }
         Ok(())
     }
 
-    // NOTE - public variant of evaluate_expression for REPL
-    pub fn evaluate_expression_(
-        env: &mut Option<Environment>,
+    // NOTE - public REPL
+    pub fn evaluate_expression(
+        env: Rc<RefCell<Environment>>,
         expr: &Expr,
     ) -> Result<Value, FlowInterruption> {
-        match env {
-            None => evaluate_expression(&mut get_globals_env(), expr),
-            Some(e) => evaluate_expression(e, expr),
-        }
-    }
-
-    fn evaluate_expression(env: &mut Environment, expr: &Expr) -> Result<Value, FlowInterruption> {
         match expr {
-            Expr::Literal(lit) => evaluate_literal(env, lit),
+            Expr::Literal(lit) => evaluate_literal(lit),
             Expr::Unary(unary) => evaluate_unary(env, unary),
             Expr::Binary(binary) => evaluate_binary(env, binary),
             Expr::Grouping(group) => evaluate_expression(env, &group.expression),
-            Expr::Variable(name) => env.get(name),
+            Expr::Variable(name) => env.borrow().get(name),
             Expr::Assignment(assignment) => evaluate_assignment(env, assignment),
             Expr::Logical(logical) => evaluate_logical(env, logical),
             Expr::Call(call) => evaluate_call(env, call),
         }
     }
 
-    fn evaluate_literal(env: &Environment, lit: &Literal) -> Result<Value, FlowInterruption> {
+    fn evaluate_literal(lit: &Literal) -> Result<Value, FlowInterruption> {
         Ok(match lit {
             Literal::Nil => Value::Nil,
             Literal::True => Value::True,
@@ -279,7 +297,10 @@ pub mod interpreter {
         })
     }
 
-    fn evaluate_unary(env: &mut Environment, unary: &Unary) -> Result<Value, FlowInterruption> {
+    fn evaluate_unary(
+        env: Rc<RefCell<Environment>>,
+        unary: &Unary,
+    ) -> Result<Value, FlowInterruption> {
         let right_val = evaluate_expression(env, &unary.right)?;
         match unary.operator.typ {
             TokenType::Minus => match right_val {
@@ -294,9 +315,12 @@ pub mod interpreter {
         }
     }
 
-    fn evaluate_binary(env: &mut Environment, binary: &Binary) -> Result<Value, FlowInterruption> {
-        let left_val = evaluate_expression(env, &binary.left)?;
-        let right_val = evaluate_expression(env, &binary.right)?;
+    fn evaluate_binary(
+        env: Rc<RefCell<Environment>>,
+        binary: &Binary,
+    ) -> Result<Value, FlowInterruption> {
+        let left_val = evaluate_expression(Rc::clone(&env), &binary.left)?;
+        let right_val = evaluate_expression(Rc::clone(&env), &binary.right)?;
         match binary.operator.typ {
             TokenType::Plus => match (left_val, right_val) {
                 (Value::Number(x), Value::Number(y)) => Ok(Value::Number(x + y)),
@@ -356,43 +380,48 @@ pub mod interpreter {
     }
 
     fn evaluate_assignment(
-        env: &mut Environment,
+        env: Rc<RefCell<Environment>>,
         assignment: &Assignment,
     ) -> Result<Value, FlowInterruption> {
-        let value = evaluate_expression(env, &assignment.value)?;
-        env.assign(&assignment.name, value.clone())?;
+        let value = evaluate_expression(Rc::clone(&env), &assignment.value)?;
+        Rc::clone(&env)
+            .borrow_mut()
+            .assign(&assignment.name, value.clone())?;
         Ok(value)
     }
 
     fn evaluate_logical(
-        env: &mut Environment,
+        env: Rc<RefCell<Environment>>,
         logical: &Logical,
     ) -> Result<Value, FlowInterruption> {
-        let left_val = evaluate_expression(env, &logical.left)?;
+        let left_val = evaluate_expression(Rc::clone(&env), &logical.left)?;
         match logical.operator.typ {
             TokenType::Or => {
                 if is_truthy(&left_val) {
                     return Ok(left_val);
                 }
-                let right_val = evaluate_expression(env, &logical.right)?;
+                let right_val = evaluate_expression(Rc::clone(&env), &logical.right)?;
                 return Ok(right_val);
             }
             TokenType::And => {
                 if !is_truthy(&left_val) {
                     return Ok(left_val);
                 }
-                let right_val = evaluate_expression(env, &logical.right)?;
+                let right_val = evaluate_expression(Rc::clone(&env), &logical.right)?;
                 return Ok(right_val);
             }
             // This case should not occur if parsing was done correctly
             _ => panic!(),
         }
     }
-    fn evaluate_call(env: &mut Environment, call: &Call) -> Result<Value, FlowInterruption> {
-        let callee = evaluate_expression(env, &call.callee)?;
+    fn evaluate_call(
+        env: Rc<RefCell<Environment>>,
+        call: &Call,
+    ) -> Result<Value, FlowInterruption> {
+        let callee = evaluate_expression(Rc::clone(&env), &call.callee)?;
         let mut arguments = vec![];
         for ast_arg in &call.arguments {
-            let current_arg = evaluate_expression(env, &ast_arg)?;
+            let current_arg = evaluate_expression(Rc::clone(&env), &ast_arg)?;
             arguments.push(current_arg);
         }
         match callee {
@@ -408,7 +437,7 @@ pub mod interpreter {
                         .to_string(),
                     )));
                 }
-                match callable.call(env, arguments) {
+                match callable.call(arguments) {
                     Err(FlowInterruption::ReturnValue(val)) => Ok(val),
                     x => x,
                 }
@@ -424,14 +453,10 @@ pub mod interpreter {
         fn arity(&self) -> usize {
             match &self {
                 Callable::NativeClock => 0,
-                Callable::Function(function) => function.params.len(),
+                Callable::Function(function) => function.decl.params.len(),
             }
         }
-        fn call(
-            &self,
-            env: &Environment,
-            arguments: Vec<Value>,
-        ) -> Result<Value, FlowInterruption> {
+        fn call(&self, arguments: Vec<Value>) -> Result<Value, FlowInterruption> {
             match &self {
                 Callable::NativeClock => {
                     let start = SystemTime::now();
@@ -441,17 +466,19 @@ pub mod interpreter {
                     Ok(Value::Number(since_the_epoch.as_secs() as f64))
                 }
                 Callable::Function(function) => {
-                    // FIXME: ugly clone here, because I didn't manage to make enclosing behind a ref
-                    // Indeed, I had lifetimes compiler issues I could not solve.
-                    let mut call_env = Environment::new_with_enclosing(env.clone());
+                    let call_env = Rc::new(RefCell::new(Environment::new_with_enclosing(
+                        Rc::clone(&function.closure),
+                    )));
                     // FIXME: use enumerate here
                     let mut index = 0;
                     for arg in arguments {
                         // NOTE - arg.len == params.len() should be checked by the caller
-                        call_env.define(function.params[index].lexeme.clone(), arg);
+                        call_env
+                            .borrow_mut()
+                            .define(function.decl.params[index].lexeme.clone(), arg);
                         index += 1;
                     }
-                    execute_block(&mut call_env, &function.body)?;
+                    execute_block(call_env, &function.decl.body)?;
                     Ok(Value::Nil)
                 }
             }
