@@ -1,17 +1,19 @@
 use rox::ast;
-use rox::interpreter::{interpreter, Environment};
+use rox::interpreter::{interpreter, Environment, FlowInterruption};
 use rox::scanner::Scanner;
 use rox::token::Token;
+use std::cell::RefCell;
 use std::env;
 use std::fs;
 use std::io;
 use std::io::Write;
 use std::process::exit;
+use std::rc::Rc;
 
 /// Try to parse and run an expression. This is useful for the REPL mode,
-/// where we want to be able to ro evaluate an expression (and not necessaritly a statement).
+/// where we want to be able to ro evaluate an expression (and not necessarily a statement).
 /// return None if the parsing failed.
-fn run_expr(tokens: &Vec<Token>, env: &mut Environment) -> Option<()> {
+fn run_expr(tokens: &Vec<Token>, env: Rc<RefCell<Environment>>) -> Option<()> {
     let mut parser = ast::parser::Parser::new(tokens.clone());
     let expr = match parser.expression() {
         Err(_) => return None,
@@ -28,7 +30,7 @@ fn run_expr(tokens: &Vec<Token>, env: &mut Environment) -> Option<()> {
     Some(())
 }
 
-fn run(content: String, env: &mut Environment, prompt_mode: bool) {
+fn run(content: String, env: Rc<RefCell<Environment>>, prompt_mode: bool) {
     let scanner = Scanner::new(content);
     let tokens = match scanner.scan_tokens() {
         Err(errors) => {
@@ -44,7 +46,7 @@ fn run(content: String, env: &mut Environment, prompt_mode: bool) {
     };
 
     if prompt_mode {
-        match run_expr(&tokens, env) {
+        match run_expr(&tokens, Rc::clone(&env)) {
             None => {}
             Some(()) => return,
         }
@@ -63,23 +65,28 @@ fn run(content: String, env: &mut Environment, prompt_mode: bool) {
     };
     match interpreter::interpret_with_env(env, &program) {
         Ok(_) => {}
-        Err(err) => {
+        Err(FlowInterruption::RuntimeError(err)) => {
             println!("{}\n[line {}]", err.message, err.token.line);
             if !prompt_mode {
                 exit(70);
             }
             return;
         }
+        Err(_) => {
+            // this case should not oocur
+            panic!();
+        }
     }
 }
 
 fn run_file(filename: &str) {
     let contents = fs::read_to_string(filename).expect("Something went wrong reading the file");
-    run(contents, &mut Environment::new(), false);
+    let env = Rc::new(RefCell::new(interpreter::get_default_globals()));
+    run(contents, env, false);
 }
 
 fn run_prompt() {
-    let mut env = Environment::new();
+    let env = Rc::new(RefCell::new(interpreter::get_default_globals()));
     loop {
         print!("> ");
         io::stdout()
@@ -92,7 +99,7 @@ fn run_prompt() {
         if line == "\n" {
             break;
         }
-        run(line, &mut env, true)
+        run(line, Rc::clone(&env), true)
     }
 }
 

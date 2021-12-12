@@ -1,7 +1,9 @@
 // test scanning + parsing + evaluating altogether
 use rox::ast;
-use rox::interpreter::{interpreter, Environment, RuntimeError, Value};
+use rox::interpreter::{interpreter, FlowInterruption, RuntimeError, Value};
 use rox::scanner::Scanner;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 fn interpret(s: &str) -> Result<Value, RuntimeError> {
     let scanner = Scanner::new(s.to_string());
@@ -10,7 +12,13 @@ fn interpret(s: &str) -> Result<Value, RuntimeError> {
         .expect("Unexpected failure of scanning");
     let mut parser = ast::parser::Parser::new(tokens);
     let expr = parser.expression().expect("Unexpected failure of parsing");
-    interpreter::evaluate_expression(&mut Environment::new(), &expr)
+    let env = Rc::new(RefCell::new(interpreter::get_default_globals()));
+    match interpreter::evaluate_expression(env, &expr) {
+        Err(FlowInterruption::RuntimeError(err)) => Err(err),
+        // this case should not occur
+        Err(FlowInterruption::ReturnValue(_)) => panic!(),
+        Ok(value) => Ok(value),
+    }
 }
 
 #[test]

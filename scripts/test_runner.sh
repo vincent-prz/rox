@@ -2,6 +2,8 @@
 
 TEST_DIR="scripts/test_data"
 EXEC_PATH="target/debug/rox"
+RED=$'\e[1;31m'
+NOCOLOR=$'\033[0m'
 
 cargo build
 if [[ $? -ne 0 ]]; then
@@ -20,7 +22,7 @@ for filename in $(ls ${TEST_DIR}/in); do
     if [[ $? -eq 0 ]]; then
         echo "${filename}: OK"
     else
-        echo "${filename}: KO"
+        echo "${RED}${filename}: KO${NOCOLOR}"
         nb_failures=$((nb_failures + 1))
     fi
     nb_tests=$((nb_tests + 1))

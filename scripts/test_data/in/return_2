@@ -1,0 +1,8 @@
+fun f(b) {
+    if (b) {
+        return 1;
+    }
+    print("not true!");
+}
+
+print f(true);
