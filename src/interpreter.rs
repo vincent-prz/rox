@@ -146,14 +146,12 @@ fn get_default_globals() -> Environment {
 pub struct Interpreter {
     globals: Rc<RefCell<Environment>>,
     environment: Rc<RefCell<Environment>>,
-    // locals: HashMap<Expr, usize>,
 }
 
 impl Interpreter {
     pub fn new() -> Self {
         let globals = Rc::new(RefCell::new(get_default_globals()));
         let environment = Rc::clone(&globals);
-        // let locals = HashMap::new();
         Self {
             globals,
             environment,
