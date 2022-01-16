@@ -144,7 +144,6 @@ fn get_default_globals() -> Environment {
 }
 
 pub struct Interpreter {
-    globals: Rc<RefCell<Environment>>,
     environment: Rc<RefCell<Environment>>,
 }
 
@@ -153,7 +152,6 @@ impl Interpreter {
         let globals = Rc::new(RefCell::new(get_default_globals()));
         let environment = Rc::clone(&globals);
         Self {
-            globals,
             environment,
         }
     }
