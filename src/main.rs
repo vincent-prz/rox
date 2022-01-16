@@ -1,25 +1,23 @@
 use rox::ast;
-use rox::interpreter::{interpreter, Environment, FlowInterruption};
+use rox::interpreter::{FlowInterruption, Interpreter};
 use rox::scanner::Scanner;
 use rox::token::Token;
-use std::cell::RefCell;
 use std::env;
 use std::fs;
 use std::io;
 use std::io::Write;
 use std::process::exit;
-use std::rc::Rc;
 
 /// Try to parse and run an expression. This is useful for the REPL mode,
 /// where we want to be able to ro evaluate an expression (and not necessarily a statement).
 /// return None if the parsing failed.
-fn run_expr(tokens: &Vec<Token>, env: Rc<RefCell<Environment>>) -> Option<()> {
+fn run_expr(tokens: &Vec<Token>, interpreter: &mut Interpreter) -> Option<()> {
     let mut parser = ast::parser::Parser::new(tokens.clone());
     let expr = match parser.expression() {
         Err(_) => return None,
         Ok(expr) => expr,
     };
-    match interpreter::evaluate_expression(env, &expr) {
+    match interpreter.evaluate_expression(&expr) {
         Err(error) => {
             println!("{:?}", error);
         }
@@ -30,7 +28,7 @@ fn run_expr(tokens: &Vec<Token>, env: Rc<RefCell<Environment>>) -> Option<()> {
     Some(())
 }
 
-fn run(content: String, env: Rc<RefCell<Environment>>, prompt_mode: bool) {
+fn run(content: String, interpreter: &mut Interpreter, prompt_mode: bool) {
     let scanner = Scanner::new(content);
     let tokens = match scanner.scan_tokens() {
         Err(errors) => {
@@ -46,7 +44,7 @@ fn run(content: String, env: Rc<RefCell<Environment>>, prompt_mode: bool) {
     };
 
     if prompt_mode {
-        match run_expr(&tokens, Rc::clone(&env)) {
+        match run_expr(&tokens, interpreter) {
             None => {}
             Some(()) => return,
         }
@@ -63,7 +61,7 @@ fn run(content: String, env: Rc<RefCell<Environment>>, prompt_mode: bool) {
         }
         Ok(program) => program,
     };
-    match interpreter::interpret_with_env(env, &program) {
+    match interpreter.interpret(&program) {
         Ok(_) => {}
         Err(FlowInterruption::RuntimeError(err)) => {
             println!("{}\n[line {}]", err.message, err.token.line);
@@ -81,12 +79,11 @@ fn run(content: String, env: Rc<RefCell<Environment>>, prompt_mode: bool) {
 
 fn run_file(filename: &str) {
     let contents = fs::read_to_string(filename).expect("Something went wrong reading the file");
-    let env = Rc::new(RefCell::new(interpreter::get_default_globals()));
-    run(contents, env, false);
+    run(contents, &mut Interpreter::new(), false);
 }
 
 fn run_prompt() {
-    let env = Rc::new(RefCell::new(interpreter::get_default_globals()));
+    let mut interpreter = Interpreter::new();
     loop {
         print!("> ");
         io::stdout()
@@ -99,7 +96,7 @@ fn run_prompt() {
         if line == "\n" {
             break;
         }
-        run(line, Rc::clone(&env), true)
+        run(line, &mut interpreter, true)
     }
 }
 
