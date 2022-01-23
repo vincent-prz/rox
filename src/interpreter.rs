@@ -18,18 +18,24 @@ pub enum Value {
     Str(String),
     Number(f64),
     Callable(Callable),
-    Class(Class),
+    ClassInstance(ClassInstance),
 }
 
 #[derive(Debug, Clone)]
 pub enum Callable {
     NativeClock,
     Function(Function),
+    Class(Class),
 }
 
 #[derive(Debug, Clone)]
 pub struct Class {
     name: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ClassInstance {
+    class: Class,
 }
 
 #[derive(Debug, Clone)]
@@ -47,7 +53,7 @@ impl fmt::Display for Value {
             Value::Str(s) => write!(f, "{}", s),
             Value::Number(n) => write!(f, "{}", n),
             Value::Callable(callable) => write!(f, "{}", callable),
-            Value::Class(class) => write!(f, "{}", class.name),
+            Value::ClassInstance(instance) => write!(f, "{} instance", instance.class.name),
         }
     }
 }
@@ -70,6 +76,7 @@ impl fmt::Display for Callable {
         match self {
             Callable::NativeClock => write!(f, "<native fn>"),
             Callable::Function(func) => write!(f, "<fn {}>", func.decl.name.lexeme),
+            Callable::Class(class) => write!(f, "{}", class.name),
         }
     }
 }
@@ -183,9 +190,10 @@ impl Interpreter {
 
     fn execute_class_decl(&mut self, decl: &ClassDecl) -> Result<(), FlowInterruption> {
         let name = decl.name.lexeme.clone();
-        self.environment
-            .borrow_mut()
-            .define(name.clone(), Value::Class(Class { name }));
+        self.environment.borrow_mut().define(
+            name.clone(),
+            Value::Callable(Callable::Class(Class { name })),
+        );
         Ok(())
     }
 
@@ -474,6 +482,9 @@ impl Interpreter {
                 self.execute_block(&function.decl.body, call_env)?;
                 Ok(Value::Nil)
             }
+            Callable::Class(class) => Ok(Value::ClassInstance(ClassInstance {
+                class: class.clone(),
+            })),
         }
     }
 }
@@ -483,6 +494,7 @@ impl Callable {
         match &self {
             Callable::NativeClock => 0,
             Callable::Function(function) => function.decl.params.len(),
+            Callable::Class(_) => 0,
         }
     }
 }
