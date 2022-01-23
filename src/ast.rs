@@ -51,6 +51,7 @@ pub enum Expr {
     Variable(Token),
     Assignment(Assignment),
     Logical(Logical),
+    Get(Get),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -95,6 +96,12 @@ pub struct Logical {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub struct Get {
+    pub object: Box<Expr>,
+    pub name: Token,
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct Assignment {
     pub name: Token,
     pub value: Box<Expr>,
@@ -126,6 +133,7 @@ pub mod printer {
             Expr::Assignment(assignment) => pretty_print_assignment(assignment),
             Expr::Logical(logical) => pretty_print_logical(logical),
             Expr::Call(call) => pretty_print_call(call),
+            Expr::Get(get) => pretty_print_get(get),
         }
     }
 
@@ -176,6 +184,10 @@ pub mod printer {
     fn pretty_print_call(call: &Call) -> String {
         // FIXME: arguments are not displayed
         format!("(call {})", pretty_print(&call.callee))
+    }
+
+    fn pretty_print_get(get: &Get) -> String {
+        format!("(get {} {})", pretty_print(&get.object), get.name.lexeme)
     }
 }
 
@@ -240,7 +252,7 @@ pub mod parser {
     term           → factor ( ( "-" | "+" ) factor )* ;
     factor         → unary ( ( "/" | "*" ) unary )* ;
     unary          → ( "!" | "-" ) unary | call
-    call           → primary ( "(" arguments? ")" )* ;
+    call           → primary ( "(" arguments? ")" | . IDENTIFIER )* ;
     primary        → NUMBER | STRING | "true" | "false" | "nil"
                    | "(" expression ")" | IDENTIFIER ;
     arguments      → expression ( "," expression )* ;
@@ -647,6 +659,17 @@ pub mod parser {
 
         fn call(&mut self) -> Result<Expr, ParseError> {
             let mut result = self.primary()?;
+            if self.peek().typ == Dot {
+                self.advance(); // discard dot
+                let name = self.consume(
+                    &Identifier("".to_string()),
+                    "Expect property name after '.'.",
+                )?;
+                return Ok(Expr::Get(Get {
+                    object: Box::new(result),
+                    name,
+                }));
+            }
             while self.peek().typ == LeftParen {
                 let paren = self.advance();
                 let arguments = self.arguments()?;

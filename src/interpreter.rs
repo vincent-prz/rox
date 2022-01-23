@@ -1,5 +1,5 @@
 use crate::ast::{
-    Assignment, Binary, Call, ClassDecl, Declaration, Expr, FunDecl, IfStmt, Literal, Logical,
+    Assignment, Binary, Call, ClassDecl, Declaration, Expr, FunDecl, Get, IfStmt, Literal, Logical,
     Program, Statement, Unary, VarDecl, WhileStmt,
 };
 use crate::token::{Token, TokenType};
@@ -36,6 +36,26 @@ pub struct Class {
 #[derive(Debug, Clone)]
 pub struct ClassInstance {
     class: Class,
+    fields: HashMap<String, Value>,
+}
+
+impl ClassInstance {
+    fn new(class: Class) -> Self {
+        Self {
+            class,
+            fields: HashMap::new(),
+        }
+    }
+
+    fn get(&self, name: &Token) -> Result<Value, FlowInterruption> {
+        match self.fields.get(&name.lexeme) {
+            Some(val) => Ok(val.clone()),
+            None => Err(FlowInterruption::RuntimeError(RuntimeError::new(
+                name.clone(),
+                format!("Undefined property {}.", name.lexeme),
+            ))),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -302,6 +322,7 @@ impl Interpreter {
             Expr::Assignment(assignment) => self.evaluate_assignment(assignment),
             Expr::Logical(logical) => self.evaluate_logical(logical),
             Expr::Call(call) => self.evaluate_call(call),
+            Expr::Get(get) => self.evaluate_get(get),
         }
     }
 
@@ -482,9 +503,18 @@ impl Interpreter {
                 self.execute_block(&function.decl.body, call_env)?;
                 Ok(Value::Nil)
             }
-            Callable::Class(class) => Ok(Value::ClassInstance(ClassInstance {
-                class: class.clone(),
-            })),
+            Callable::Class(class) => Ok(Value::ClassInstance(ClassInstance::new(class.clone()))),
+        }
+    }
+
+    fn evaluate_get(&mut self, get: &Get) -> Result<Value, FlowInterruption> {
+        let object = self.evaluate_expression(&get.object)?;
+        match object {
+            Value::ClassInstance(instance) => instance.get(&get.name),
+            _ => Err(FlowInterruption::RuntimeError(RuntimeError::new(
+                get.name.clone(),
+                "Only instances have properties.".to_string(),
+            ))),
         }
     }
 }
