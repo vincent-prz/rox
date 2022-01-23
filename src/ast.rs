@@ -7,9 +7,15 @@ pub struct Program {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Declaration {
+    ClassDecl(ClassDecl),
     FunDecl(FunDecl),
     VarDecl(VarDecl),
     Statement(Statement),
+}
+#[derive(Debug, PartialEq, Clone)]
+pub struct ClassDecl {
+    pub name: Token,
+    pub methods: Vec<FunDecl>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -204,7 +210,8 @@ pub mod parser {
 
     /*
     program        → declaration* EOF ;
-    declaration    → funDecl | varDecl | statement ;
+    declaration    → classDecl | funDecl | varDecl | statement ;
+    classDecl      → "class" IDENTIFIER "{" function* "}" ;
     funDecl        → "fun" function ;
     function       → IDENTIFIER "(" parameters? ")" block ;
     varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
@@ -324,24 +331,42 @@ pub mod parser {
         fn declaration(&mut self) -> Result<Declaration, ParseError> {
             let token = self.peek();
             match token.typ {
-                Fun => self.fun_decl("function"),
-                Var => self.var_decl(),
+                Class => self.class_decl().map(Declaration::ClassDecl),
+                Fun => self.fun_decl("function").map(Declaration::FunDecl),
+                Var => self.var_decl().map(Declaration::VarDecl),
                 _ => Ok(Declaration::Statement(self.statement()?)),
             }
         }
 
-        fn fun_decl(&mut self, kind: &str) -> Result<Declaration, ParseError> {
-            self.advance(); // discard fun token
-                            // FIXME: need to create empty string to consume identifier
+        fn class_decl(&mut self) -> Result<ClassDecl, ParseError> {
+            self.advance(); // discard class token
+            let lexeme = self.peek().lexeme.clone();
+            // FIXME: need to copy lexeme to check Identifier type -> ugly
+            let name = self.consume(&Identifier(lexeme), "Expect class name.")?;
+            self.consume(&LeftBrace, &format!("Expect '{{' before class body."))?;
+            let mut methods = vec![];
+            while self.peek().typ != RightBrace && !self.is_at_end() {
+                let meth = self.fun_decl("method")?;
+                methods.push(meth);
+            }
+            self.consume(&RightBrace, &format!("Expect '}}' after class body."))?;
+            Ok(ClassDecl { name, methods })
+        }
+
+        fn fun_decl(&mut self, kind: &str) -> Result<FunDecl, ParseError> {
+            if kind == "function" {
+                self.advance(); // discard fun token
+            }
+            // FIXME: need to create empty string to consume identifier
             let name = self.consume(
                 &Identifier("".to_string()),
                 &format!("Expect {} name.", kind),
             )?;
             self.consume(&LeftParen, &format!("Expect '(' after {} name.", kind))?;
             let params = self.parameters()?;
-            self.consume(&LeftBrace, &format!("Expect '{{' before {} body.", kind));
+            self.consume(&LeftBrace, &format!("Expect '{{' before {} body.", kind))?;
             let body = self.block()?;
-            Ok(Declaration::FunDecl(FunDecl { name, params, body }))
+            Ok(FunDecl { name, params, body })
         }
 
         fn parameters(&mut self) -> Result<Vec<Token>, ParseError> {
@@ -367,7 +392,7 @@ pub mod parser {
             Ok(params)
         }
 
-        fn var_decl(&mut self) -> Result<Declaration, ParseError> {
+        fn var_decl(&mut self) -> Result<VarDecl, ParseError> {
             self.advance(); // discard var token
             let lexeme = self.peek().lexeme.clone();
             // FIXME: need to copy lexeme to check Identifier type -> ugly
@@ -378,10 +403,10 @@ pub mod parser {
                 None
             };
             self.consume(&Semicolon, "Expect ';' after declaration.")?;
-            Ok(Declaration::VarDecl(VarDecl {
+            Ok(VarDecl {
                 identifier,
                 initializer,
-            }))
+            })
         }
 
         fn statement(&mut self) -> Result<Statement, ParseError> {
@@ -463,7 +488,7 @@ pub mod parser {
                     self.advance(); // discard semi colon
                     None
                 }
-                Var => Some(self.var_decl()?),
+                Var => Some(self.var_decl()?).map(Declaration::VarDecl),
                 _ => Some(Declaration::Statement(self.expr_statement()?)),
             };
             let condition = match self.peek().typ {

@@ -1,6 +1,6 @@
 use crate::ast::{
-    Assignment, Binary, Call, Declaration, Expr, FunDecl, IfStmt, Literal, Logical, Program,
-    Statement, Unary, VarDecl, WhileStmt,
+    Assignment, Binary, Call, ClassDecl, Declaration, Expr, FunDecl, IfStmt, Literal, Logical,
+    Program, Statement, Unary, VarDecl, WhileStmt,
 };
 use crate::token::{Token, TokenType};
 use std::cell::RefCell;
@@ -18,12 +18,18 @@ pub enum Value {
     Str(String),
     Number(f64),
     Callable(Callable),
+    Class(Class),
 }
 
 #[derive(Debug, Clone)]
 pub enum Callable {
     NativeClock,
     Function(Function),
+}
+
+#[derive(Debug, Clone)]
+pub struct Class {
+    name: String,
 }
 
 #[derive(Debug, Clone)]
@@ -41,6 +47,7 @@ impl fmt::Display for Value {
             Value::Str(s) => write!(f, "{}", s),
             Value::Number(n) => write!(f, "{}", n),
             Value::Callable(callable) => write!(f, "{}", callable),
+            Value::Class(class) => write!(f, "{}", class.name),
         }
     }
 }
@@ -151,9 +158,7 @@ impl Interpreter {
     pub fn new() -> Self {
         let globals = Rc::new(RefCell::new(get_default_globals()));
         let environment = Rc::clone(&globals);
-        Self {
-            environment,
-        }
+        Self { environment }
     }
 
     pub fn interpret(&mut self, program: &Program) -> Result<(), FlowInterruption> {
@@ -169,11 +174,21 @@ impl Interpreter {
 
     fn execute_declaration(&mut self, decl: &Declaration) -> Result<(), FlowInterruption> {
         match decl {
+            Declaration::ClassDecl(class_decl) => self.execute_class_decl(class_decl),
             Declaration::FunDecl(fun_decl) => self.execute_fun_decl(fun_decl),
             Declaration::VarDecl(var_decl) => self.execute_var_decl(var_decl),
             Declaration::Statement(stmt) => self.execute_statement(stmt),
         }
     }
+
+    fn execute_class_decl(&mut self, decl: &ClassDecl) -> Result<(), FlowInterruption> {
+        let name = decl.name.lexeme.clone();
+        self.environment
+            .borrow_mut()
+            .define(name.clone(), Value::Class(Class { name }));
+        Ok(())
+    }
+
     fn execute_fun_decl(&mut self, decl: &FunDecl) -> Result<(), FlowInterruption> {
         self.environment.borrow_mut().define(
             decl.name.lexeme.clone(),

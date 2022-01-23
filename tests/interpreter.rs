@@ -1,6 +1,6 @@
 // test scanning + parsing + evaluating altogether
 use rox::ast;
-use rox::interpreter::{Interpreter, FlowInterruption, RuntimeError, Value};
+use rox::interpreter::{FlowInterruption, Interpreter, RuntimeError, Value};
 use rox::scanner::Scanner;
 
 fn interpret(s: &str) -> Result<Value, RuntimeError> {
