@@ -1,6 +1,6 @@
 use crate::ast::{
     Assignment, Binary, Call, ClassDecl, Declaration, Expr, FunDecl, Get, IfStmt, Literal, Logical,
-    Program, Statement, Unary, VarDecl, WhileStmt,
+    Program, Set, Statement, Unary, VarDecl, WhileStmt,
 };
 use crate::token::{Token, TokenType};
 use std::cell::RefCell;
@@ -55,6 +55,10 @@ impl ClassInstance {
                 format!("Undefined property {}.", name.lexeme),
             ))),
         }
+    }
+
+    fn set(&mut self, name: &Token, value: Value) {
+        self.fields.insert(name.lexeme.clone(), value);
     }
 }
 
@@ -323,6 +327,7 @@ impl Interpreter {
             Expr::Logical(logical) => self.evaluate_logical(logical),
             Expr::Call(call) => self.evaluate_call(call),
             Expr::Get(get) => self.evaluate_get(get),
+            Expr::Set(set) => self.evaluate_set(set),
         }
     }
 
@@ -514,6 +519,21 @@ impl Interpreter {
             _ => Err(FlowInterruption::RuntimeError(RuntimeError::new(
                 get.name.clone(),
                 "Only instances have properties.".to_string(),
+            ))),
+        }
+    }
+
+    fn evaluate_set(&mut self, set: &Set) -> Result<Value, FlowInterruption> {
+        let object = self.evaluate_expression(&set.object)?;
+        match object {
+            Value::ClassInstance(mut instance) => {
+                let value = self.evaluate_expression(&set.value)?;
+                instance.set(&set.name, value.clone());
+                return Ok(value);
+            }
+            _ => Err(FlowInterruption::RuntimeError(RuntimeError::new(
+                set.name.clone(),
+                "Only instances have fields.".to_string(),
             ))),
         }
     }

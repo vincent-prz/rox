@@ -1,0 +1,12 @@
+class Bagel {}
+var b1 = bagel();
+var b2 = bagel();
+
+b1.bread = "toast";
+b2.bread = "baguette";
+
+print b1.bread;
+print b2.bread;
+
+b1.bread = nil;
+print b1.bread;

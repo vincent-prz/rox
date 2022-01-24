@@ -52,6 +52,7 @@ pub enum Expr {
     Assignment(Assignment),
     Logical(Logical),
     Get(Get),
+    Set(Set),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -102,6 +103,13 @@ pub struct Get {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub struct Set {
+    pub object: Box<Expr>,
+    pub name: Token,
+    pub value: Box<Expr>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct Assignment {
     pub name: Token,
     pub value: Box<Expr>,
@@ -134,6 +142,7 @@ pub mod printer {
             Expr::Logical(logical) => pretty_print_logical(logical),
             Expr::Call(call) => pretty_print_call(call),
             Expr::Get(get) => pretty_print_get(get),
+            Expr::Set(set) => pretty_print_set(set),
         }
     }
 
@@ -189,6 +198,15 @@ pub mod printer {
     fn pretty_print_get(get: &Get) -> String {
         format!("(get {} {})", pretty_print(&get.object), get.name.lexeme)
     }
+
+    fn pretty_print_set(set: &Set) -> String {
+        format!(
+            "(set {} {} {})",
+            pretty_print(&set.object),
+            set.name.lexeme,
+            pretty_print(&set.value)
+        )
+    }
 }
 
 #[test]
@@ -243,7 +261,7 @@ pub mod parser {
     returnStmt      → "return" expression? ";" ;
 
     expression     → assignment ;
-    assignment     → IDENTIFIER "=" assignment
+    assignment     → ( call "." )? IDENTIFIER "=" assignment
                    | logic_or ;
     logic_or       → logic_and ( "or" logic_and )* ;
     logic_and      → equality ( "and" equality )* ;
@@ -564,6 +582,11 @@ pub mod parser {
                 let value = self.assignment()?;
                 return match expr {
                     Expr::Variable(name) => Ok(Expr::Assignment(Assignment {
+                        name,
+                        value: Box::new(value),
+                    })),
+                    Expr::Get(Get { object, name }) => Ok(Expr::Set(Set {
+                        object,
                         name,
                         value: Box::new(value),
                     })),
