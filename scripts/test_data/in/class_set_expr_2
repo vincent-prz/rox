@@ -1,6 +1,6 @@
 class Bagel {}
-var b1 = bagel();
-var b2 = bagel();
+var b1 = Bagel();
+var b2 = Bagel();
 
 b1.bread = "toast";
 b2.bread = "baguette";

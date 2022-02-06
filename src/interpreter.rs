@@ -18,7 +18,7 @@ pub enum Value {
     Str(String),
     Number(f64),
     Callable(Callable),
-    ClassInstance(ClassInstance),
+    ClassInstance(Rc<RefCell<ClassInstance>>),
 }
 
 #[derive(Debug, Clone)]
@@ -36,7 +36,7 @@ pub struct Class {
 #[derive(Debug, Clone)]
 pub struct ClassInstance {
     class: Class,
-    fields: HashMap<String, Value>,
+    fields: HashMap<String, Rc<RefCell<Value>>>,
 }
 
 impl ClassInstance {
@@ -47,9 +47,9 @@ impl ClassInstance {
         }
     }
 
-    fn get(&self, name: &Token) -> Result<Value, FlowInterruption> {
+    fn get(&self, name: &Token) -> Result<Rc<RefCell<Value>>, FlowInterruption> {
         match self.fields.get(&name.lexeme) {
-            Some(val) => Ok(val.clone()),
+            Some(val) => Ok(Rc::clone(val)),
             None => Err(FlowInterruption::RuntimeError(RuntimeError::new(
                 name.clone(),
                 format!("Undefined property {}.", name.lexeme),
@@ -57,7 +57,7 @@ impl ClassInstance {
         }
     }
 
-    fn set(&mut self, name: &Token, value: Value) {
+    fn set(&mut self, name: &Token, value: Rc<RefCell<Value>>) {
         self.fields.insert(name.lexeme.clone(), value);
     }
 }
@@ -77,7 +77,9 @@ impl fmt::Display for Value {
             Value::Str(s) => write!(f, "{}", s),
             Value::Number(n) => write!(f, "{}", n),
             Value::Callable(callable) => write!(f, "{}", callable),
-            Value::ClassInstance(instance) => write!(f, "{} instance", instance.class.name),
+            Value::ClassInstance(instance) => {
+                write!(f, "{} instance", instance.borrow().class.name)
+            }
         }
     }
 }
@@ -107,7 +109,7 @@ impl fmt::Display for Callable {
 
 #[derive(Debug)]
 pub enum FlowInterruption {
-    ReturnValue(Value),
+    ReturnValue(Rc<RefCell<Value>>),
     RuntimeError(RuntimeError),
 }
 
@@ -125,7 +127,7 @@ impl RuntimeError {
 
 #[derive(Clone, Debug)]
 struct Environment {
-    values: HashMap<String, Value>,
+    values: HashMap<String, Rc<RefCell<Value>>>,
     enclosing: Option<Rc<RefCell<Environment>>>,
 }
 
@@ -144,11 +146,11 @@ impl Environment {
         }
     }
 
-    fn define(&mut self, name: String, value: Value) {
+    fn define(&mut self, name: String, value: Rc<RefCell<Value>>) {
         self.values.insert(name, value);
     }
 
-    fn assign(&mut self, name: &Token, value: Value) -> Result<(), FlowInterruption> {
+    fn assign(&mut self, name: &Token, value: Rc<RefCell<Value>>) -> Result<(), FlowInterruption> {
         if self.values.contains_key(&name.lexeme) {
             return Ok(self.define(name.lexeme.clone(), value));
         }
@@ -161,9 +163,9 @@ impl Environment {
         }
     }
 
-    fn get(&self, name: &Token) -> Result<Value, FlowInterruption> {
+    fn get(&self, name: &Token) -> Result<Rc<RefCell<Value>>, FlowInterruption> {
         match self.values.get(&name.lexeme) {
-            Some(value) => Ok(value.clone()),
+            Some(value) => Ok(Rc::clone(value)),
             None => match &self.enclosing {
                 Some(enclosing) => enclosing.borrow().get(name),
                 None => Err(FlowInterruption::RuntimeError(RuntimeError::new(
@@ -177,7 +179,10 @@ impl Environment {
 
 fn get_default_globals() -> Environment {
     let mut globals = Environment::new();
-    globals.define("clock".to_string(), Value::Callable(Callable::NativeClock));
+    globals.define(
+        "clock".to_string(),
+        Rc::new(RefCell::new(Value::Callable(Callable::NativeClock))),
+    );
     globals
 }
 
@@ -216,7 +221,9 @@ impl Interpreter {
         let name = decl.name.lexeme.clone();
         self.environment.borrow_mut().define(
             name.clone(),
-            Value::Callable(Callable::Class(Class { name })),
+            Rc::new(RefCell::new(Value::Callable(Callable::Class(Class {
+                name,
+            })))),
         );
         Ok(())
     }
@@ -224,10 +231,12 @@ impl Interpreter {
     fn execute_fun_decl(&mut self, decl: &FunDecl) -> Result<(), FlowInterruption> {
         self.environment.borrow_mut().define(
             decl.name.lexeme.clone(),
-            Value::Callable(Callable::Function(Function {
-                decl: decl.clone(),
-                closure: Rc::clone(&self.environment),
-            })),
+            Rc::new(RefCell::new(Value::Callable(Callable::Function(
+                Function {
+                    decl: decl.clone(),
+                    closure: Rc::clone(&self.environment),
+                },
+            )))),
         );
         Ok(())
     }
@@ -235,7 +244,7 @@ impl Interpreter {
     fn execute_var_decl(&mut self, decl: &VarDecl) -> Result<(), FlowInterruption> {
         let varname = decl.identifier.lexeme.clone();
         let value = match &decl.initializer {
-            None => Value::Nil,
+            None => Rc::new(RefCell::new(Value::Nil)),
             Some(expr) => self.evaluate_expression(&expr)?,
         };
         self.environment.borrow_mut().define(varname, value);
@@ -246,11 +255,11 @@ impl Interpreter {
         match stmt {
             Statement::PrintStmt(expr) => {
                 let value = self.evaluate_expression(&expr)?;
-                println!("{}", value);
+                println!("{}", value.borrow());
             }
             Statement::ReturnStmt(option_expr) => {
                 let return_value = match option_expr {
-                    None => Value::Nil,
+                    None => Rc::new(RefCell::new(Value::Nil)),
                     Some(expr) => self.evaluate_expression(expr)?,
                 };
                 // propagating return value as error to make sure the `return` statement
@@ -271,7 +280,7 @@ impl Interpreter {
                 then_branch,
                 else_branch,
             }) => {
-                if is_truthy(&self.evaluate_expression(condition)?) {
+                if is_truthy(&self.evaluate_expression(condition)?.borrow()) {
                     self.execute_statement(then_branch)?;
                 } else {
                     match else_branch {
@@ -309,14 +318,17 @@ impl Interpreter {
     fn execute_while_statement(&mut self, while_stmt: &WhileStmt) -> Result<(), FlowInterruption> {
         let condition = &while_stmt.condition;
         let body = &while_stmt.body;
-        while is_truthy(&self.evaluate_expression(&condition)?) {
+        while is_truthy(&self.evaluate_expression(&condition)?.borrow()) {
             self.execute_statement(&body)?;
         }
         Ok(())
     }
 
     // NOTE - public REPL
-    pub fn evaluate_expression(&mut self, expr: &Expr) -> Result<Value, FlowInterruption> {
+    pub fn evaluate_expression(
+        &mut self,
+        expr: &Expr,
+    ) -> Result<Rc<RefCell<Value>>, FlowInterruption> {
         match expr {
             Expr::Literal(lit) => self.evaluate_literal(lit),
             Expr::Unary(unary) => self.evaluate_unary(unary),
@@ -331,36 +343,40 @@ impl Interpreter {
         }
     }
 
-    fn evaluate_literal(&self, lit: &Literal) -> Result<Value, FlowInterruption> {
-        Ok(match lit {
+    fn evaluate_literal(&self, lit: &Literal) -> Result<Rc<RefCell<Value>>, FlowInterruption> {
+        Ok(Rc::new(RefCell::new(match lit {
             Literal::Nil => Value::Nil,
             Literal::True => Value::True,
             Literal::False => Value::False,
             Literal::Str(s) => Value::Str(s.clone()),
             Literal::Number(n) => Value::Number(*n),
-        })
+        })))
     }
 
-    fn evaluate_unary(&mut self, unary: &Unary) -> Result<Value, FlowInterruption> {
+    fn evaluate_unary(&mut self, unary: &Unary) -> Result<Rc<RefCell<Value>>, FlowInterruption> {
         let right_val = self.evaluate_expression(&unary.right)?;
         match unary.operator.typ {
-            TokenType::Minus => match right_val {
-                Value::Number(n) => Ok(Value::Number(-n)),
+            TokenType::Minus => match *right_val.borrow() {
+                Value::Number(n) => Ok(Rc::new(RefCell::new(Value::Number(-n)))),
                 _ => Err(FlowInterruption::RuntimeError(RuntimeError::new(
                     unary.operator.clone(),
                     "Operand must be a number.".to_string(),
                 ))),
             },
-            TokenType::Bang => Ok(bool_to_val(!is_truthy(&right_val))),
+            TokenType::Bang => Ok(Rc::new(RefCell::new(bool_to_val(!is_truthy(
+                &right_val.borrow(),
+            ))))),
             _ => panic!(),
         }
     }
 
-    fn evaluate_binary(&mut self, binary: &Binary) -> Result<Value, FlowInterruption> {
-        let left_val = self.evaluate_expression(&binary.left)?;
-        let right_val = self.evaluate_expression(&binary.right)?;
+    fn evaluate_binary(&mut self, binary: &Binary) -> Result<Rc<RefCell<Value>>, FlowInterruption> {
+        let left_tmp = self.evaluate_expression(&binary.left)?;
+        let left_val = left_tmp.borrow();
+        let right_tmp = self.evaluate_expression(&binary.right)?;
+        let right_val = right_tmp.borrow();
         match binary.operator.typ {
-            TokenType::Plus => match (left_val, right_val) {
+            TokenType::Plus => match (&*left_val, &*right_val) {
                 (Value::Number(x), Value::Number(y)) => Ok(Value::Number(x + y)),
                 (Value::Str(x), Value::Str(y)) => Ok(Value::Str(format!("{}{}", x, y))),
                 _ => Err(FlowInterruption::RuntimeError(RuntimeError::new(
@@ -368,45 +384,45 @@ impl Interpreter {
                     "Operands must be two numbers or two strings.".to_string(),
                 ))),
             },
-            TokenType::Minus => match (left_val, right_val) {
+            TokenType::Minus => match (&*left_val, &*right_val) {
                 (Value::Number(x), Value::Number(y)) => Ok(Value::Number(x - y)),
                 _ => Err(FlowInterruption::RuntimeError(make_numbers_operand_error(
                     &binary.operator,
                 ))),
             },
-            TokenType::Star => match (left_val, right_val) {
+            TokenType::Star => match (&*left_val, &*right_val) {
                 (Value::Number(x), Value::Number(y)) => Ok(Value::Number(x * y)),
                 _ => Err(FlowInterruption::RuntimeError(make_numbers_operand_error(
                     &binary.operator,
                 ))),
             },
-            TokenType::Slash => match (left_val, right_val) {
+            TokenType::Slash => match (&*left_val, &*right_val) {
                 (Value::Number(x), Value::Number(y)) => Ok(Value::Number(x / y)),
                 _ => Err(FlowInterruption::RuntimeError(make_numbers_operand_error(
                     &binary.operator,
                 ))),
             },
-            TokenType::EqualEqual => Ok(bool_to_val(left_val == right_val)),
-            TokenType::BangEqual => Ok(bool_to_val(left_val != right_val)),
-            TokenType::LessEqual => match (left_val, right_val) {
+            TokenType::EqualEqual => Ok(bool_to_val(&*left_val == &*right_val)),
+            TokenType::BangEqual => Ok(bool_to_val(&*left_val != &*right_val)),
+            TokenType::LessEqual => match (&*left_val, &*right_val) {
                 (Value::Number(x), Value::Number(y)) => Ok(bool_to_val(x <= y)),
                 _ => Err(FlowInterruption::RuntimeError(make_numbers_operand_error(
                     &binary.operator,
                 ))),
             },
-            TokenType::Less => match (left_val, right_val) {
+            TokenType::Less => match (&*left_val, &*right_val) {
                 (Value::Number(x), Value::Number(y)) => Ok(bool_to_val(x < y)),
                 _ => Err(FlowInterruption::RuntimeError(make_numbers_operand_error(
                     &binary.operator,
                 ))),
             },
-            TokenType::GreaterEqual => match (left_val, right_val) {
+            TokenType::GreaterEqual => match (&*left_val, &*right_val) {
                 (Value::Number(x), Value::Number(y)) => Ok(bool_to_val(x >= y)),
                 _ => Err(FlowInterruption::RuntimeError(make_numbers_operand_error(
                     &binary.operator,
                 ))),
             },
-            TokenType::Greater => match (left_val, right_val) {
+            TokenType::Greater => match (&*left_val, &*right_val) {
                 (Value::Number(x), Value::Number(y)) => Ok(bool_to_val(x > y)),
                 _ => Err(FlowInterruption::RuntimeError(make_numbers_operand_error(
                     &binary.operator,
@@ -415,9 +431,13 @@ impl Interpreter {
             // FIXME: this
             _ => panic!(),
         }
+        .map(|result| Rc::new(RefCell::new(result)))
     }
 
-    fn evaluate_assignment(&mut self, assignment: &Assignment) -> Result<Value, FlowInterruption> {
+    fn evaluate_assignment(
+        &mut self,
+        assignment: &Assignment,
+    ) -> Result<Rc<RefCell<Value>>, FlowInterruption> {
         let value = self.evaluate_expression(&assignment.value)?;
         Rc::clone(&self.environment)
             .borrow_mut()
@@ -425,18 +445,21 @@ impl Interpreter {
         Ok(value)
     }
 
-    fn evaluate_logical(&mut self, logical: &Logical) -> Result<Value, FlowInterruption> {
+    fn evaluate_logical(
+        &mut self,
+        logical: &Logical,
+    ) -> Result<Rc<RefCell<Value>>, FlowInterruption> {
         let left_val = self.evaluate_expression(&logical.left)?;
         match logical.operator.typ {
             TokenType::Or => {
-                if is_truthy(&left_val) {
+                if is_truthy(&left_val.borrow()) {
                     return Ok(left_val);
                 }
                 let right_val = self.evaluate_expression(&logical.right)?;
                 return Ok(right_val);
             }
             TokenType::And => {
-                if !is_truthy(&left_val) {
+                if !is_truthy(&left_val.borrow()) {
                     return Ok(left_val);
                 }
                 let right_val = self.evaluate_expression(&logical.right)?;
@@ -447,14 +470,15 @@ impl Interpreter {
         }
     }
 
-    fn evaluate_call(&mut self, call: &Call) -> Result<Value, FlowInterruption> {
-        let callee = self.evaluate_expression(&call.callee)?;
+    fn evaluate_call(&mut self, call: &Call) -> Result<Rc<RefCell<Value>>, FlowInterruption> {
+        let tmp = self.evaluate_expression(&call.callee)?;
+        let callee = tmp.borrow();
         let mut arguments = vec![];
         for ast_arg in &call.arguments {
             let current_arg = self.evaluate_expression(&ast_arg)?;
             arguments.push(current_arg);
         }
-        match callee {
+        match &*callee {
             Value::Callable(callable) => {
                 if arguments.len() != callable.arity() {
                     return Err(FlowInterruption::RuntimeError(RuntimeError::new(
@@ -482,8 +506,8 @@ impl Interpreter {
     fn perform_call(
         &mut self,
         callable: &Callable,
-        arguments: Vec<Value>,
-    ) -> Result<Value, FlowInterruption> {
+        arguments: Vec<Rc<RefCell<Value>>>,
+    ) -> Result<Rc<RefCell<Value>>, FlowInterruption> {
         match callable {
             Callable::NativeClock => {
                 let start = SystemTime::now();
@@ -508,14 +532,18 @@ impl Interpreter {
                 self.execute_block(&function.decl.body, call_env)?;
                 Ok(Value::Nil)
             }
-            Callable::Class(class) => Ok(Value::ClassInstance(ClassInstance::new(class.clone()))),
+            Callable::Class(class) => Ok(Value::ClassInstance(Rc::new(RefCell::new(
+                ClassInstance::new(class.clone()),
+            )))),
         }
+        .map(|result| Rc::new(RefCell::new(result)))
     }
 
-    fn evaluate_get(&mut self, get: &Get) -> Result<Value, FlowInterruption> {
-        let object = self.evaluate_expression(&get.object)?;
-        match object {
-            Value::ClassInstance(instance) => instance.get(&get.name),
+    fn evaluate_get(&mut self, get: &Get) -> Result<Rc<RefCell<Value>>, FlowInterruption> {
+        let tmp = self.evaluate_expression(&get.object)?;
+        let object = tmp.borrow();
+        match &*object {
+            Value::ClassInstance(instance) => instance.borrow().get(&get.name),
             _ => Err(FlowInterruption::RuntimeError(RuntimeError::new(
                 get.name.clone(),
                 "Only instances have properties.".to_string(),
@@ -523,12 +551,13 @@ impl Interpreter {
         }
     }
 
-    fn evaluate_set(&mut self, set: &Set) -> Result<Value, FlowInterruption> {
-        let object = self.evaluate_expression(&set.object)?;
-        match object {
-            Value::ClassInstance(mut instance) => {
+    fn evaluate_set(&mut self, set: &Set) -> Result<Rc<RefCell<Value>>, FlowInterruption> {
+        let tmp = self.evaluate_expression(&set.object)?;
+        let object = tmp.borrow();
+        match &*object {
+            Value::ClassInstance(instance) => {
                 let value = self.evaluate_expression(&set.value)?;
-                instance.set(&set.name, value.clone());
+                instance.borrow_mut().set(&set.name, Rc::clone(&value));
                 return Ok(value);
             }
             _ => Err(FlowInterruption::RuntimeError(RuntimeError::new(
