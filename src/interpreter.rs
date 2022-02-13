@@ -31,6 +31,7 @@ pub enum Callable {
 #[derive(Debug, Clone)]
 pub struct Class {
     name: String,
+    methods: HashMap<String, Function>,
 }
 
 #[derive(Debug, Clone)]
@@ -48,13 +49,18 @@ impl ClassInstance {
     }
 
     fn get(&self, name: &Token) -> Result<Rc<RefCell<Value>>, FlowInterruption> {
-        match self.fields.get(&name.lexeme) {
-            Some(val) => Ok(Rc::clone(val)),
-            None => Err(FlowInterruption::RuntimeError(RuntimeError::new(
-                name.clone(),
-                format!("Undefined property {}.", name.lexeme),
-            ))),
+        if let Some(val) = self.fields.get(&name.lexeme) {
+            return Ok(Rc::clone(val));
         }
+        if let Some(method) = self.class.methods.get(&name.lexeme) {
+            return Ok(Rc::new(RefCell::new(Value::Callable(Callable::Function(
+                method.clone(),
+            )))));
+        }
+        Err(FlowInterruption::RuntimeError(RuntimeError::new(
+            name.clone(),
+            format!("Undefined property {}.", name.lexeme),
+        )))
     }
 
     fn set(&mut self, name: &Token, value: Rc<RefCell<Value>>) {
@@ -219,10 +225,18 @@ impl Interpreter {
 
     fn execute_class_decl(&mut self, decl: &ClassDecl) -> Result<(), FlowInterruption> {
         let name = decl.name.lexeme.clone();
+        let mut methods = HashMap::new();
+        for ast_method in &decl.methods {
+            methods.insert(
+                ast_method.name.lexeme.clone(),
+                self.parse_fun_decl(ast_method),
+            );
+        }
         self.environment.borrow_mut().define(
             name.clone(),
             Rc::new(RefCell::new(Value::Callable(Callable::Class(Class {
                 name,
+                methods,
             })))),
         );
         Ok(())
@@ -232,13 +246,17 @@ impl Interpreter {
         self.environment.borrow_mut().define(
             decl.name.lexeme.clone(),
             Rc::new(RefCell::new(Value::Callable(Callable::Function(
-                Function {
-                    decl: decl.clone(),
-                    closure: Rc::clone(&self.environment),
-                },
+                self.parse_fun_decl(decl),
             )))),
         );
         Ok(())
+    }
+
+    fn parse_fun_decl(&self, decl: &FunDecl) -> Function {
+        Function {
+            decl: decl.clone(),
+            closure: Rc::clone(&self.environment),
+        }
     }
 
     fn execute_var_decl(&mut self, decl: &VarDecl) -> Result<(), FlowInterruption> {

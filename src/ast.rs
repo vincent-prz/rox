@@ -270,7 +270,7 @@ pub mod parser {
     term           → factor ( ( "-" | "+" ) factor )* ;
     factor         → unary ( ( "/" | "*" ) unary )* ;
     unary          → ( "!" | "-" ) unary | call
-    call           → primary ( "(" arguments? ")" | . IDENTIFIER )* ;
+    call           → primary ( "(" arguments? ")" | "." IDENTIFIER )* ;
     primary        → NUMBER | STRING | "true" | "false" | "nil"
                    | "(" expression ")" | IDENTIFIER ;
     arguments      → expression ( "," expression )* ;
@@ -688,10 +688,10 @@ pub mod parser {
                     &Identifier("".to_string()),
                     "Expect property name after '.'.",
                 )?;
-                return Ok(Expr::Get(Get {
+                result = Expr::Get(Get {
                     object: Box::new(result),
                     name,
-                }));
+                });
             }
             while self.peek().typ == LeftParen {
                 let paren = self.advance();
