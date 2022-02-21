@@ -1,0 +1,10 @@
+class A {
+
+  f() {
+    print "hello";
+  }
+}
+
+var a = A();
+
+a.f();
