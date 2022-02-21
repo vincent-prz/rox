@@ -682,26 +682,29 @@ pub mod parser {
 
         fn call(&mut self) -> Result<Expr, ParseError> {
             let mut result = self.primary()?;
-            if self.peek().typ == Dot {
-                self.advance(); // discard dot
-                let name = self.consume(
-                    &Identifier("".to_string()),
-                    "Expect property name after '.'.",
-                )?;
-                result = Expr::Get(Get {
-                    object: Box::new(result),
-                    name,
-                });
-            }
-            while self.peek().typ == LeftParen {
-                let paren = self.advance();
-                let arguments = self.arguments()?;
-                result = Expr::Call(Call {
-                    callee: Box::new(result),
-                    paren,
-                    arguments,
-                });
-                self.consume(&RightParen, "Expect ')' after arguments.")?;
+            loop {
+                if self.peek().typ == LeftParen {
+                    let paren = self.advance();
+                    let arguments = self.arguments()?;
+                    result = Expr::Call(Call {
+                        callee: Box::new(result),
+                        paren,
+                        arguments,
+                    });
+                    self.consume(&RightParen, "Expect ')' after arguments.")?;
+                } else if self.peek().typ == Dot {
+                    self.advance(); // discard dot
+                    let name = self.consume(
+                        &Identifier("".to_string()),
+                        "Expect property name after '.'.",
+                    )?;
+                    result = Expr::Get(Get {
+                        object: Box::new(result),
+                        name,
+                    });
+                } else {
+                    break;
+                }
             }
             Ok(result)
         }
