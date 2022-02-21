@@ -53,6 +53,7 @@ pub enum Expr {
     Logical(Logical),
     Get(Get),
     Set(Set),
+    This(Token),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -143,6 +144,7 @@ pub mod printer {
             Expr::Call(call) => pretty_print_call(call),
             Expr::Get(get) => pretty_print_get(get),
             Expr::Set(set) => pretty_print_set(set),
+            Expr::This(_) => "this".to_string(),
         }
     }
 
@@ -731,6 +733,7 @@ pub mod parser {
                     }))
                 }
                 Identifier(_) => Ok(Expr::Variable(token)),
+                This => Ok(Expr::This(token)),
                 _ => Err(ParseError {
                     message: "Expect expression".to_string(),
                     token,

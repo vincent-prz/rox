@@ -40,27 +40,32 @@ pub struct ClassInstance {
     fields: HashMap<String, Rc<RefCell<Value>>>,
 }
 
+// NOTE - can not mae this a method of ClassInstance, because we need self to be a Rc RefCell
+// Indeed method calls can mutate the instance.
+fn get_from_class_instance(
+    instance: Rc<RefCell<ClassInstance>>,
+    name: &Token,
+) -> Result<Rc<RefCell<Value>>, FlowInterruption> {
+    if let Some(val) = instance.borrow().fields.get(&name.lexeme) {
+        return Ok(Rc::clone(val));
+    }
+    if let Some(method) = instance.borrow().class.methods.get(&name.lexeme) {
+        return Ok(Rc::new(RefCell::new(Value::Callable(Callable::Function(
+            method.clone().bind(Rc::clone(&instance)),
+        )))));
+    }
+    Err(FlowInterruption::RuntimeError(RuntimeError::new(
+        name.clone(),
+        format!("Undefined property {}.", name.lexeme),
+    )))
+}
+
 impl ClassInstance {
     fn new(class: Class) -> Self {
         Self {
             class,
             fields: HashMap::new(),
         }
-    }
-
-    fn get(&self, name: &Token) -> Result<Rc<RefCell<Value>>, FlowInterruption> {
-        if let Some(val) = self.fields.get(&name.lexeme) {
-            return Ok(Rc::clone(val));
-        }
-        if let Some(method) = self.class.methods.get(&name.lexeme) {
-            return Ok(Rc::new(RefCell::new(Value::Callable(Callable::Function(
-                method.clone(),
-            )))));
-        }
-        Err(FlowInterruption::RuntimeError(RuntimeError::new(
-            name.clone(),
-            format!("Undefined property {}.", name.lexeme),
-        )))
     }
 
     fn set(&mut self, name: &Token, value: Rc<RefCell<Value>>) {
@@ -72,6 +77,20 @@ impl ClassInstance {
 pub struct Function {
     decl: FunDecl,
     closure: Rc<RefCell<Environment>>,
+}
+
+impl Function {
+    fn bind(&self, instance: Rc<RefCell<ClassInstance>>) -> Self {
+        let mut env = Environment::new_with_enclosing(Rc::clone(&self.closure));
+        env.define(
+            "this".to_string(),
+            Rc::new(RefCell::new(Value::ClassInstance(instance))),
+        );
+        Function {
+            decl: self.decl.clone(),
+            closure: Rc::new(RefCell::new(env)),
+        }
+    }
 }
 
 impl fmt::Display for Value {
@@ -358,6 +377,7 @@ impl Interpreter {
             Expr::Call(call) => self.evaluate_call(call),
             Expr::Get(get) => self.evaluate_get(get),
             Expr::Set(set) => self.evaluate_set(set),
+            Expr::This(name) => self.environment.borrow().get(name),
         }
     }
 
@@ -561,7 +581,9 @@ impl Interpreter {
         let tmp = self.evaluate_expression(&get.object)?;
         let object = tmp.borrow();
         match &*object {
-            Value::ClassInstance(instance) => instance.borrow().get(&get.name),
+            Value::ClassInstance(instance) => {
+                get_from_class_instance(Rc::clone(instance), &get.name)
+            }
             _ => Err(FlowInterruption::RuntimeError(RuntimeError::new(
                 get.name.clone(),
                 "Only instances have properties.".to_string(),
