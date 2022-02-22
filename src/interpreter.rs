@@ -34,13 +34,19 @@ pub struct Class {
     methods: HashMap<String, Function>,
 }
 
+impl Class {
+    fn make_new_instance(&self) -> ClassInstance {
+        ClassInstance::new(self.clone())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ClassInstance {
     class: Class,
     fields: HashMap<String, Rc<RefCell<Value>>>,
 }
 
-// NOTE - can not mae this a method of ClassInstance, because we need self to be a Rc RefCell
+// NOTE - can not make this a method of ClassInstance, because we need self to be a Rc RefCell
 // Indeed method calls can mutate the instance.
 fn get_from_class_instance(
     instance: Rc<RefCell<ClassInstance>>,
@@ -80,6 +86,10 @@ pub struct Function {
 }
 
 impl Function {
+    fn arity(&self) -> usize {
+        self.decl.params.len()
+    }
+
     fn bind(&self, instance: Rc<RefCell<ClassInstance>>) -> Self {
         let mut env = Environment::new_with_enclosing(Rc::clone(&self.closure));
         env.define(
@@ -554,27 +564,38 @@ impl Interpreter {
                     .expect("Time went backwards");
                 Ok(Value::Number(since_the_epoch.as_secs() as f64))
             }
-            Callable::Function(function) => {
-                let call_env = Rc::new(RefCell::new(Environment::new_with_enclosing(Rc::clone(
-                    &function.closure,
-                ))));
-                // FIXME: use enumerate here
-                let mut index = 0;
-                for arg in arguments {
-                    // NOTE - arg.len == params.len() should be checked by the caller
-                    call_env
-                        .borrow_mut()
-                        .define(function.decl.params[index].lexeme.clone(), arg);
-                    index += 1;
+            Callable::Function(function) => self.perform_function_call(function, arguments),
+            Callable::Class(class) => {
+                let new_instance = Rc::new(RefCell::new(class.make_new_instance()));
+                if let Some(initializer) = class.methods.get("init") {
+                    let bound_initializer = initializer.bind(Rc::clone(&new_instance));
+                    self.perform_function_call(&bound_initializer, arguments)?;
                 }
-                self.execute_block(&function.decl.body, call_env)?;
-                Ok(Value::Nil)
+                Ok(Value::ClassInstance(new_instance))
             }
-            Callable::Class(class) => Ok(Value::ClassInstance(Rc::new(RefCell::new(
-                ClassInstance::new(class.clone()),
-            )))),
         }
         .map(|result| Rc::new(RefCell::new(result)))
+    }
+
+    fn perform_function_call(
+        &mut self,
+        function: &Function,
+        arguments: Vec<Rc<RefCell<Value>>>,
+    ) -> Result<Value, FlowInterruption> {
+        let call_env = Rc::new(RefCell::new(Environment::new_with_enclosing(Rc::clone(
+            &function.closure,
+        ))));
+        // FIXME: use enumerate here
+        let mut index = 0;
+        for arg in arguments {
+            // NOTE - arg.len == params.len() should be checked by the caller
+            call_env
+                .borrow_mut()
+                .define(function.decl.params[index].lexeme.clone(), arg);
+            index += 1;
+        }
+        self.execute_block(&function.decl.body, call_env)?;
+        Ok(Value::Nil)
     }
 
     fn evaluate_get(&mut self, get: &Get) -> Result<Rc<RefCell<Value>>, FlowInterruption> {
@@ -612,8 +633,11 @@ impl Callable {
     fn arity(&self) -> usize {
         match &self {
             Callable::NativeClock => 0,
-            Callable::Function(function) => function.decl.params.len(),
-            Callable::Class(_) => 0,
+            Callable::Function(function) => function.arity(),
+            Callable::Class(class) => match class.methods.get("init") {
+                Some(function) => function.arity(),
+                None => 0,
+            },
         }
     }
 }

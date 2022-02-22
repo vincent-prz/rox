@@ -1,0 +1,8 @@
+class Number {
+    init(val) {
+        this.val = val;
+    }
+}
+
+var n = Number(10);
+print n.val;
