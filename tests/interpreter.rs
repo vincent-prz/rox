@@ -16,7 +16,7 @@ fn interpret(s: &str) -> Result<Value, RuntimeError> {
         Err(FlowInterruption::RuntimeError(err)) => Err(err),
         // this case should not occur
         Err(FlowInterruption::ReturnValue(_)) => panic!(),
-        Ok(value) => Ok(value),
+        Ok(value) => Ok(value.borrow().clone()),
     }
 }
 
