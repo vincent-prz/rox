@@ -1,0 +1,3 @@
+returning nil is not allowed
+Can't return a value from an initializer.
+[line 4]

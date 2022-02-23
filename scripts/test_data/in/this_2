@@ -1,0 +1,16 @@
+class Person {
+    sayName() {
+        print "my name is " + this.name;
+    }
+    changeName(newName) {
+        this.name = newName;
+    }
+}
+
+var p = Person();
+p.name = "Bob";
+p.sayName();
+p.name = "John";
+p.sayName();
+p.changeName("Alice");
+p.sayName();

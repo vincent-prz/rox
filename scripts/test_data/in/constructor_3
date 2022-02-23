@@ -1,0 +1,7 @@
+class Foo {
+    init() {
+        return "Something else";
+    }
+}
+
+print Foo();

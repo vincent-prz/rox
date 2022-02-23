@@ -7,9 +7,15 @@ pub struct Program {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Declaration {
+    ClassDecl(ClassDecl),
     FunDecl(FunDecl),
     VarDecl(VarDecl),
     Statement(Statement),
+}
+#[derive(Debug, PartialEq, Clone)]
+pub struct ClassDecl {
+    pub name: Token,
+    pub methods: Vec<FunDecl>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -30,7 +36,7 @@ pub enum Statement {
     ExprStmt(Expr),
     IfStmt(IfStmt),
     PrintStmt(Expr),
-    ReturnStmt(Option<Expr>),
+    ReturnStmt(ReturnStmt),
     WhileStmt(WhileStmt),
     Block(Vec<Declaration>),
 }
@@ -45,6 +51,9 @@ pub enum Expr {
     Variable(Token),
     Assignment(Assignment),
     Logical(Logical),
+    Get(Get),
+    Set(Set),
+    This(Token),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -89,6 +98,19 @@ pub struct Logical {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub struct Get {
+    pub object: Box<Expr>,
+    pub name: Token,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Set {
+    pub object: Box<Expr>,
+    pub name: Token,
+    pub value: Box<Expr>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct Assignment {
     pub name: Token,
     pub value: Box<Expr>,
@@ -107,6 +129,12 @@ pub struct WhileStmt {
     pub body: Box<Statement>,
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub struct ReturnStmt {
+    pub token: Token,
+    pub expr: Option<Expr>,
+}
+
 pub mod printer {
     use super::*;
 
@@ -120,6 +148,9 @@ pub mod printer {
             Expr::Assignment(assignment) => pretty_print_assignment(assignment),
             Expr::Logical(logical) => pretty_print_logical(logical),
             Expr::Call(call) => pretty_print_call(call),
+            Expr::Get(get) => pretty_print_get(get),
+            Expr::Set(set) => pretty_print_set(set),
+            Expr::This(_) => "this".to_string(),
         }
     }
 
@@ -171,6 +202,19 @@ pub mod printer {
         // FIXME: arguments are not displayed
         format!("(call {})", pretty_print(&call.callee))
     }
+
+    fn pretty_print_get(get: &Get) -> String {
+        format!("(get {} {})", pretty_print(&get.object), get.name.lexeme)
+    }
+
+    fn pretty_print_set(set: &Set) -> String {
+        format!(
+            "(set {} {} {})",
+            pretty_print(&set.object),
+            set.name.lexeme,
+            pretty_print(&set.value)
+        )
+    }
 }
 
 #[test]
@@ -204,7 +248,8 @@ pub mod parser {
 
     /*
     program        → declaration* EOF ;
-    declaration    → funDecl | varDecl | statement ;
+    declaration    → classDecl | funDecl | varDecl | statement ;
+    classDecl      → "class" IDENTIFIER "{" function* "}" ;
     funDecl        → "fun" function ;
     function       → IDENTIFIER "(" parameters? ")" block ;
     varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
@@ -224,7 +269,7 @@ pub mod parser {
     returnStmt      → "return" expression? ";" ;
 
     expression     → assignment ;
-    assignment     → IDENTIFIER "=" assignment
+    assignment     → ( call "." )? IDENTIFIER "=" assignment
                    | logic_or ;
     logic_or       → logic_and ( "or" logic_and )* ;
     logic_and      → equality ( "and" equality )* ;
@@ -233,7 +278,7 @@ pub mod parser {
     term           → factor ( ( "-" | "+" ) factor )* ;
     factor         → unary ( ( "/" | "*" ) unary )* ;
     unary          → ( "!" | "-" ) unary | call
-    call           → primary ( "(" arguments? ")" )* ;
+    call           → primary ( "(" arguments? ")" | "." IDENTIFIER )* ;
     primary        → NUMBER | STRING | "true" | "false" | "nil"
                    | "(" expression ")" | IDENTIFIER ;
     arguments      → expression ( "," expression )* ;
@@ -324,24 +369,42 @@ pub mod parser {
         fn declaration(&mut self) -> Result<Declaration, ParseError> {
             let token = self.peek();
             match token.typ {
-                Fun => self.fun_decl("function"),
-                Var => self.var_decl(),
+                Class => self.class_decl().map(Declaration::ClassDecl),
+                Fun => self.fun_decl("function").map(Declaration::FunDecl),
+                Var => self.var_decl().map(Declaration::VarDecl),
                 _ => Ok(Declaration::Statement(self.statement()?)),
             }
         }
 
-        fn fun_decl(&mut self, kind: &str) -> Result<Declaration, ParseError> {
-            self.advance(); // discard fun token
-                            // FIXME: need to create empty string to consume identifier
+        fn class_decl(&mut self) -> Result<ClassDecl, ParseError> {
+            self.advance(); // discard class token
+            let lexeme = self.peek().lexeme.clone();
+            // FIXME: need to copy lexeme to check Identifier type -> ugly
+            let name = self.consume(&Identifier(lexeme), "Expect class name.")?;
+            self.consume(&LeftBrace, &format!("Expect '{{' before class body."))?;
+            let mut methods = vec![];
+            while self.peek().typ != RightBrace && !self.is_at_end() {
+                let meth = self.fun_decl("method")?;
+                methods.push(meth);
+            }
+            self.consume(&RightBrace, &format!("Expect '}}' after class body."))?;
+            Ok(ClassDecl { name, methods })
+        }
+
+        fn fun_decl(&mut self, kind: &str) -> Result<FunDecl, ParseError> {
+            if kind == "function" {
+                self.advance(); // discard fun token
+            }
+            // FIXME: need to create empty string to consume identifier
             let name = self.consume(
                 &Identifier("".to_string()),
                 &format!("Expect {} name.", kind),
             )?;
             self.consume(&LeftParen, &format!("Expect '(' after {} name.", kind))?;
             let params = self.parameters()?;
-            self.consume(&LeftBrace, &format!("Expect '{{' before {} body.", kind));
+            self.consume(&LeftBrace, &format!("Expect '{{' before {} body.", kind))?;
             let body = self.block()?;
-            Ok(Declaration::FunDecl(FunDecl { name, params, body }))
+            Ok(FunDecl { name, params, body })
         }
 
         fn parameters(&mut self) -> Result<Vec<Token>, ParseError> {
@@ -367,7 +430,7 @@ pub mod parser {
             Ok(params)
         }
 
-        fn var_decl(&mut self) -> Result<Declaration, ParseError> {
+        fn var_decl(&mut self) -> Result<VarDecl, ParseError> {
             self.advance(); // discard var token
             let lexeme = self.peek().lexeme.clone();
             // FIXME: need to copy lexeme to check Identifier type -> ugly
@@ -378,10 +441,10 @@ pub mod parser {
                 None
             };
             self.consume(&Semicolon, "Expect ';' after declaration.")?;
-            Ok(Declaration::VarDecl(VarDecl {
+            Ok(VarDecl {
                 identifier,
                 initializer,
-            }))
+            })
         }
 
         fn statement(&mut self) -> Result<Statement, ParseError> {
@@ -398,14 +461,14 @@ pub mod parser {
                     Ok(Statement::PrintStmt(expr))
                 }
                 Return => {
-                    self.advance(); // discard return token
+                    let token = self.advance(); // take return token
                     let expr = if self.peek().typ == Semicolon {
                         None
                     } else {
                         Some(self.expression()?)
                     };
                     self.consume(&Semicolon, "Expect ';' after return value.")?;
-                    Ok(Statement::ReturnStmt(expr))
+                    Ok(Statement::ReturnStmt(ReturnStmt { token, expr }))
                 }
                 LeftBrace => {
                     self.advance(); // discard left brace
@@ -463,7 +526,7 @@ pub mod parser {
                     self.advance(); // discard semi colon
                     None
                 }
-                Var => Some(self.var_decl()?),
+                Var => Some(self.var_decl()?).map(Declaration::VarDecl),
                 _ => Some(Declaration::Statement(self.expr_statement()?)),
             };
             let condition = match self.peek().typ {
@@ -527,6 +590,11 @@ pub mod parser {
                 let value = self.assignment()?;
                 return match expr {
                     Expr::Variable(name) => Ok(Expr::Assignment(Assignment {
+                        name,
+                        value: Box::new(value),
+                    })),
+                    Expr::Get(Get { object, name }) => Ok(Expr::Set(Set {
+                        object,
                         name,
                         value: Box::new(value),
                     })),
@@ -622,15 +690,29 @@ pub mod parser {
 
         fn call(&mut self) -> Result<Expr, ParseError> {
             let mut result = self.primary()?;
-            while self.peek().typ == LeftParen {
-                let paren = self.advance();
-                let arguments = self.arguments()?;
-                result = Expr::Call(Call {
-                    callee: Box::new(result),
-                    paren,
-                    arguments,
-                });
-                self.consume(&RightParen, "Expect ')' after arguments.")?;
+            loop {
+                if self.peek().typ == LeftParen {
+                    let paren = self.advance();
+                    let arguments = self.arguments()?;
+                    result = Expr::Call(Call {
+                        callee: Box::new(result),
+                        paren,
+                        arguments,
+                    });
+                    self.consume(&RightParen, "Expect ')' after arguments.")?;
+                } else if self.peek().typ == Dot {
+                    self.advance(); // discard dot
+                    let name = self.consume(
+                        &Identifier("".to_string()),
+                        "Expect property name after '.'.",
+                    )?;
+                    result = Expr::Get(Get {
+                        object: Box::new(result),
+                        name,
+                    });
+                } else {
+                    break;
+                }
             }
             Ok(result)
         }
@@ -657,6 +739,7 @@ pub mod parser {
                     }))
                 }
                 Identifier(_) => Ok(Expr::Variable(token)),
+                This => Ok(Expr::This(token)),
                 _ => Err(ParseError {
                     message: "Expect expression".to_string(),
                     token,

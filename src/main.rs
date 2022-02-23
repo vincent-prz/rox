@@ -22,7 +22,7 @@ fn run_expr(tokens: &Vec<Token>, interpreter: &mut Interpreter) -> Option<()> {
             println!("{:?}", error);
         }
         Ok(val) => {
-            println!("{}", val);
+            println!("{}", val.borrow());
         }
     }
     Some(())
