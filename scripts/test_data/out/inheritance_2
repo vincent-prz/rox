@@ -1,0 +1,1 @@
+ParseError { message: "Expect superclass name.", token: Token { typ: Number(42.0), lexeme: "42", line: 1 } }

@@ -1,0 +1,4 @@
+class Boo {}
+class Foo < Boo {}
+
+print(Foo);

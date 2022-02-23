@@ -1,6 +1,6 @@
 use crate::ast::{
     Assignment, Binary, Call, ClassDecl, Declaration, Expr, FunDecl, Get, IfStmt, Literal, Logical,
-    Program, ReturnStmt, Set, Statement, Unary, VarDecl, WhileStmt,
+    Program, ReturnStmt, Set, Statement, Unary, VarDecl, Variable, WhileStmt,
 };
 use crate::token::{Token, TokenType};
 use std::cell::RefCell;
@@ -28,12 +28,13 @@ pub enum Value {
 pub enum Callable {
     NativeClock,
     Function(Function),
-    Class(Class),
+    Class(Rc<Class>),
 }
 
 #[derive(Debug, Clone)]
 pub struct Class {
     name: String,
+    superclass: Option<Rc<Class>>,
     methods: HashMap<String, Function>,
 }
 
@@ -280,12 +281,29 @@ impl Interpreter {
                 self.parse_fun_decl(ast_method),
             );
         }
+        let superclass = match &decl.superclass {
+            None => None,
+            Some(superclass) => {
+                let tmp = self.evaluate_variable(&superclass.name)?;
+                let superclass_var = tmp.borrow();
+                match &*superclass_var {
+                    Value::Callable(Callable::Class(class)) => Some(Rc::clone(class)),
+                    _ => {
+                        return Err(FlowInterruption::RuntimeError(RuntimeError {
+                            message: "Superclass must be a class.".to_string(),
+                            token: superclass.name.clone(),
+                        }))
+                    }
+                }
+            }
+        };
         self.environment.borrow_mut().define(
             name.clone(),
-            Rc::new(RefCell::new(Value::Callable(Callable::Class(Class {
+            Rc::new(RefCell::new(Value::Callable(Callable::Class(Rc::new(Class {
                 name,
+                superclass,
                 methods,
-            })))),
+            }))))),
         );
         Ok(())
     }
@@ -408,13 +426,13 @@ impl Interpreter {
             Expr::Unary(unary) => self.evaluate_unary(unary),
             Expr::Binary(binary) => self.evaluate_binary(binary),
             Expr::Grouping(group) => self.evaluate_expression(&group.expression),
-            Expr::Variable(name) => self.environment.borrow().get(name),
+            Expr::Variable(Variable { name }) => self.evaluate_variable(name),
             Expr::Assignment(assignment) => self.evaluate_assignment(assignment),
             Expr::Logical(logical) => self.evaluate_logical(logical),
             Expr::Call(call) => self.evaluate_call(call),
             Expr::Get(get) => self.evaluate_get(get),
             Expr::Set(set) => self.evaluate_set(set),
-            Expr::This(name) => self.environment.borrow().get(name),
+            Expr::This(name) => self.evaluate_variable(name),
         }
     }
 
@@ -507,6 +525,10 @@ impl Interpreter {
             _ => panic!(),
         }
         .map(|result| Rc::new(RefCell::new(result)))
+    }
+
+    fn evaluate_variable(&mut self, name: &Token) -> Result<Rc<RefCell<Value>>, FlowInterruption> {
+        self.environment.borrow().get(name)
     }
 
     fn evaluate_assignment(

@@ -15,6 +15,7 @@ pub enum Declaration {
 #[derive(Debug, PartialEq, Clone)]
 pub struct ClassDecl {
     pub name: Token,
+    pub superclass: Option<Variable>,
     pub methods: Vec<FunDecl>,
 }
 
@@ -48,7 +49,7 @@ pub enum Expr {
     Binary(Binary),
     Call(Call),
     Grouping(Grouping),
-    Variable(Token),
+    Variable(Variable),
     Assignment(Assignment),
     Logical(Logical),
     Get(Get),
@@ -75,6 +76,11 @@ pub struct Call {
 #[derive(Debug, PartialEq, Clone)]
 pub struct Grouping {
     pub expression: Box<Expr>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Variable {
+    pub name: Token,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -144,7 +150,7 @@ pub mod printer {
             Expr::Grouping(group) => pretty_print_grouping(group),
             Expr::Unary(unary) => pretty_print_unary(unary),
             Expr::Binary(binary) => pretty_print_binary(binary),
-            Expr::Variable(token) => token.lexeme.clone(),
+            Expr::Variable(Variable { name }) => name.lexeme.clone(),
             Expr::Assignment(assignment) => pretty_print_assignment(assignment),
             Expr::Logical(logical) => pretty_print_logical(logical),
             Expr::Call(call) => pretty_print_call(call),
@@ -249,7 +255,8 @@ pub mod parser {
     /*
     program        → declaration* EOF ;
     declaration    → classDecl | funDecl | varDecl | statement ;
-    classDecl      → "class" IDENTIFIER "{" function* "}" ;
+    classDecl      → "class" IDENTIFIER ( "<" IDENTIFIER )?
+                     "{" function* "}" ;
     funDecl        → "fun" function ;
     function       → IDENTIFIER "(" parameters? ")" block ;
     varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
@@ -378,9 +385,16 @@ pub mod parser {
 
         fn class_decl(&mut self) -> Result<ClassDecl, ParseError> {
             self.advance(); // discard class token
-            let lexeme = self.peek().lexeme.clone();
-            // FIXME: need to copy lexeme to check Identifier type -> ugly
-            let name = self.consume(&Identifier(lexeme), "Expect class name.")?;
+            // FIXME: need to create fake identifier to check Identifier type -> ugly
+            let name = self.consume(&Identifier("".to_string()), "Expect class name.")?;
+
+            let mut superclass = None;
+            if self.check(&Less) {
+                self.advance();
+                let superclass_name = self.consume(&Identifier("".to_string()), "Expect superclass name.")?;
+                superclass = Some(Variable { name: superclass_name});
+            }
+
             self.consume(&LeftBrace, &format!("Expect '{{' before class body."))?;
             let mut methods = vec![];
             while self.peek().typ != RightBrace && !self.is_at_end() {
@@ -388,7 +402,7 @@ pub mod parser {
                 methods.push(meth);
             }
             self.consume(&RightBrace, &format!("Expect '}}' after class body."))?;
-            Ok(ClassDecl { name, methods })
+            Ok(ClassDecl { name, superclass, methods })
         }
 
         fn fun_decl(&mut self, kind: &str) -> Result<FunDecl, ParseError> {
@@ -589,7 +603,7 @@ pub mod parser {
                 let equals = self.previous();
                 let value = self.assignment()?;
                 return match expr {
-                    Expr::Variable(name) => Ok(Expr::Assignment(Assignment {
+                    Expr::Variable(Variable { name }) => Ok(Expr::Assignment(Assignment {
                         name,
                         value: Box::new(value),
                     })),
@@ -738,7 +752,7 @@ pub mod parser {
                         expression: (Box::new(expr)),
                     }))
                 }
-                Identifier(_) => Ok(Expr::Variable(token)),
+                Identifier(_) => Ok(Expr::Variable(Variable { name: token })),
                 This => Ok(Expr::This(token)),
                 _ => Err(ParseError {
                     message: "Expect expression".to_string(),
