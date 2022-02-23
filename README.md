@@ -10,5 +10,5 @@ Tree walk interpreter for the [Lox language](http://www.craftinginterpreters.com
 - [x] Control Flow (if statements, while and foor loops)
 - [x] Functions
 - [x] Closures
-- [ ] Classes
+- [x] Classes
 - [ ] Inheritance
