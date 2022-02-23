@@ -83,6 +83,7 @@ impl ClassInstance {
 pub struct Function {
     decl: FunDecl,
     closure: Rc<RefCell<Environment>>,
+    is_initializer: bool,
 }
 
 impl Function {
@@ -99,6 +100,7 @@ impl Function {
         Function {
             decl: self.decl.clone(),
             closure: Rc::new(RefCell::new(env)),
+            is_initializer: self.decl.name.lexeme == "init",
         }
     }
 }
@@ -210,6 +212,10 @@ impl Environment {
             },
         }
     }
+
+    fn get_at(&self, name: &str) -> Option<Rc<RefCell<Value>>> {
+        self.values.get(name).map(|val| Rc::clone(val))
+    }
 }
 
 fn get_default_globals() -> Environment {
@@ -285,6 +291,7 @@ impl Interpreter {
         Function {
             decl: decl.clone(),
             closure: Rc::clone(&self.environment),
+            is_initializer: false,
         }
     }
 
@@ -562,7 +569,8 @@ impl Interpreter {
                 let since_the_epoch = start
                     .duration_since(UNIX_EPOCH)
                     .expect("Time went backwards");
-                Ok(Value::Number(since_the_epoch.as_secs() as f64))
+                let value = Value::Number(since_the_epoch.as_secs() as f64);
+                Ok(Rc::new(RefCell::new(value)))
             }
             Callable::Function(function) => self.perform_function_call(function, arguments),
             Callable::Class(class) => {
@@ -571,17 +579,17 @@ impl Interpreter {
                     let bound_initializer = initializer.bind(Rc::clone(&new_instance));
                     self.perform_function_call(&bound_initializer, arguments)?;
                 }
-                Ok(Value::ClassInstance(new_instance))
+                let value = Value::ClassInstance(new_instance);
+                Ok(Rc::new(RefCell::new(value)))
             }
         }
-        .map(|result| Rc::new(RefCell::new(result)))
     }
 
     fn perform_function_call(
         &mut self,
         function: &Function,
         arguments: Vec<Rc<RefCell<Value>>>,
-    ) -> Result<Value, FlowInterruption> {
+    ) -> Result<Rc<RefCell<Value>>, FlowInterruption> {
         let call_env = Rc::new(RefCell::new(Environment::new_with_enclosing(Rc::clone(
             &function.closure,
         ))));
@@ -595,7 +603,14 @@ impl Interpreter {
             index += 1;
         }
         self.execute_block(&function.decl.body, call_env)?;
-        Ok(Value::Nil)
+        if function.is_initializer {
+            // if in constructor, we implicitely return this, if not done by the user
+            match function.closure.borrow().get_at("this") {
+                Some(val) => return Ok(val),
+                None => panic!("Could not find this in constructor!"),
+            }
+        }
+        Ok(Rc::new(RefCell::new(Value::Nil)))
     }
 
     fn evaluate_get(&mut self, get: &Get) -> Result<Rc<RefCell<Value>>, FlowInterruption> {

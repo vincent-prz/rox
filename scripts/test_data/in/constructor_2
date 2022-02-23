@@ -1,0 +1,13 @@
+class Number {
+    init(val) {
+        this.val = val;
+    }
+}
+
+var n = Number(10);
+print n.val;
+n.val = 11;
+print n.val;
+// here we want n.init to return the instance and not nil
+print n.init(10);
+print n.val;
