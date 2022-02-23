@@ -1,0 +1,8 @@
+class Foo {
+    init() {
+        print "returning nil is not allowed";
+        return nil;
+    }
+}
+
+print Foo();

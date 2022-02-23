@@ -1,0 +1,8 @@
+class Foo {
+    init() {
+        print "empty return is allowed";
+        return;
+    }
+}
+
+Foo();

@@ -36,7 +36,7 @@ pub enum Statement {
     ExprStmt(Expr),
     IfStmt(IfStmt),
     PrintStmt(Expr),
-    ReturnStmt(Option<Expr>),
+    ReturnStmt(ReturnStmt),
     WhileStmt(WhileStmt),
     Block(Vec<Declaration>),
 }
@@ -127,6 +127,12 @@ pub struct IfStmt {
 pub struct WhileStmt {
     pub condition: Expr,
     pub body: Box<Statement>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct ReturnStmt {
+    pub token: Token,
+    pub expr: Option<Expr>,
 }
 
 pub mod printer {
@@ -455,14 +461,14 @@ pub mod parser {
                     Ok(Statement::PrintStmt(expr))
                 }
                 Return => {
-                    self.advance(); // discard return token
+                    let token = self.advance(); // take return token
                     let expr = if self.peek().typ == Semicolon {
                         None
                     } else {
                         Some(self.expression()?)
                     };
                     self.consume(&Semicolon, "Expect ';' after return value.")?;
-                    Ok(Statement::ReturnStmt(expr))
+                    Ok(Statement::ReturnStmt(ReturnStmt { token, expr }))
                 }
                 LeftBrace => {
                     self.advance(); // discard left brace

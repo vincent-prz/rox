@@ -1,6 +1,6 @@
 use crate::ast::{
     Assignment, Binary, Call, ClassDecl, Declaration, Expr, FunDecl, Get, IfStmt, Literal, Logical,
-    Program, Set, Statement, Unary, VarDecl, WhileStmt,
+    Program, ReturnStmt, Set, Statement, Unary, VarDecl, WhileStmt,
 };
 use crate::token::{Token, TokenType};
 use std::cell::RefCell;
@@ -146,8 +146,18 @@ impl fmt::Display for Callable {
 
 #[derive(Debug)]
 pub enum FlowInterruption {
-    ReturnValue(Rc<RefCell<Value>>),
+    ReturnValue(ReturnValue),
     RuntimeError(RuntimeError),
+}
+
+#[derive(Debug)]
+pub struct ReturnValue {
+    token: Token,
+    // was the return stratement empty ? returning `nil` is not the same as an empty return
+    // the distinction matters for class constructors (the first is disallowed, and the
+    // second is allowed).
+    was_empty: bool,
+    value: Rc<RefCell<Value>>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -311,14 +321,21 @@ impl Interpreter {
                 let value = self.evaluate_expression(&expr)?;
                 println!("{}", value.borrow());
             }
-            Statement::ReturnStmt(option_expr) => {
-                let return_value = match option_expr {
-                    None => Rc::new(RefCell::new(Value::Nil)),
-                    Some(expr) => self.evaluate_expression(expr)?,
+            Statement::ReturnStmt(ReturnStmt {
+                token,
+                expr: option_expr,
+            }) => {
+                let (return_value, was_empty) = match option_expr {
+                    None => (Rc::new(RefCell::new(Value::Nil)), true),
+                    Some(expr) => (self.evaluate_expression(expr)?, false),
                 };
                 // propagating return value as error to make sure the `return` statement
                 // interrupts the function flow
-                return Err(FlowInterruption::ReturnValue(return_value));
+                return Err(FlowInterruption::ReturnValue(ReturnValue {
+                    token: token.clone(),
+                    was_empty,
+                    value: return_value,
+                }));
             }
             Statement::ExprStmt(expr) => {
                 self.evaluate_expression(&expr)?;
@@ -546,10 +563,7 @@ impl Interpreter {
                         .to_string(),
                     )));
                 }
-                match self.perform_call(&callable, arguments) {
-                    Err(FlowInterruption::ReturnValue(val)) => Ok(val),
-                    x => x,
-                }
+                self.perform_call(&callable, arguments)
             }
             _ => Err(FlowInterruption::RuntimeError(RuntimeError::new(
                 call.paren.clone(),
@@ -602,15 +616,39 @@ impl Interpreter {
                 .define(function.decl.params[index].lexeme.clone(), arg);
             index += 1;
         }
-        self.execute_block(&function.decl.body, call_env)?;
+        let mut value_was_returned = false;
+        let mut return_token = None;
+        let result = match self.execute_block(&function.decl.body, call_env) {
+            // intercepting return value
+            Err(FlowInterruption::ReturnValue(ReturnValue {
+                token,
+                was_empty,
+                value,
+            })) => {
+                value_was_returned = !was_empty;
+                return_token = Some(token);
+                value
+            }
+            Ok(_) => Rc::new(RefCell::new(Value::Nil)),
+            Err(err) => {
+                return Err(err);
+            }
+        };
         if function.is_initializer {
-            // if in constructor, we implicitely return this, if not done by the user
+            // if in constructor, we implicitely return this. If something was explictely returned
+            // we mark it as an error.
+            if value_was_returned {
+                return Err(FlowInterruption::RuntimeError(RuntimeError {
+                    message: "Can't return a value from an initializer.".to_string(),
+                    token: return_token.unwrap(),
+                }));
+            }
             match function.closure.borrow().get_at("this") {
                 Some(val) => return Ok(val),
                 None => panic!("Could not find this in constructor!"),
             }
         }
-        Ok(Rc::new(RefCell::new(Value::Nil)))
+        Ok(result)
     }
 
     fn evaluate_get(&mut self, get: &Get) -> Result<Rc<RefCell<Value>>, FlowInterruption> {
