@@ -10,6 +10,9 @@ use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 // TODO: split this file
+static INIT: &str = "init";
+static THIS: &str = "this";
+
 #[derive(Debug, Clone)]
 pub enum Value {
     Nil,
@@ -94,13 +97,13 @@ impl Function {
     fn bind(&self, instance: Rc<RefCell<ClassInstance>>) -> Self {
         let mut env = Environment::new_with_enclosing(Rc::clone(&self.closure));
         env.define(
-            "this".to_string(),
+            THIS.to_string(),
             Rc::new(RefCell::new(Value::ClassInstance(instance))),
         );
         Function {
             decl: self.decl.clone(),
             closure: Rc::new(RefCell::new(env)),
-            is_initializer: self.decl.name.lexeme == "init",
+            is_initializer: self.decl.name.lexeme == INIT,
         }
     }
 }
@@ -589,7 +592,7 @@ impl Interpreter {
             Callable::Function(function) => self.perform_function_call(function, arguments),
             Callable::Class(class) => {
                 let new_instance = Rc::new(RefCell::new(class.make_new_instance()));
-                if let Some(initializer) = class.methods.get("init") {
+                if let Some(initializer) = class.methods.get(INIT) {
                     let bound_initializer = initializer.bind(Rc::clone(&new_instance));
                     self.perform_function_call(&bound_initializer, arguments)?;
                 }
@@ -643,7 +646,7 @@ impl Interpreter {
                     token: return_token.unwrap(),
                 }));
             }
-            match function.closure.borrow().get_at("this") {
+            match function.closure.borrow().get_at(THIS) {
                 Some(val) => return Ok(val),
                 None => panic!("Could not find this in constructor!"),
             }
@@ -687,7 +690,7 @@ impl Callable {
         match &self {
             Callable::NativeClock => 0,
             Callable::Function(function) => function.arity(),
-            Callable::Class(class) => match class.methods.get("init") {
+            Callable::Class(class) => match class.methods.get(INIT) {
                 Some(function) => function.arity(),
                 None => 0,
             },
