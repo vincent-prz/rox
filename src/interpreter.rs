@@ -49,6 +49,14 @@ impl Class {
             .as_ref()
             .and_then(|superclass| superclass.find_method(name)))
     }
+
+    // look for method in superclass first
+    fn reversed_find_method(&self, name: &str) -> Option<Rc<Function>> {
+        self.superclass
+            .as_ref()
+            .and_then(|superclass| superclass.find_method(name))
+            .or(self.methods.get(name).map(Rc::clone))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -235,9 +243,10 @@ impl Environment {
     }
 
     fn get_at(&self, name: &str) -> Option<Rc<RefCell<Value>>> {
-        self.values.get(name).map(|val| Rc::clone(val)).or(
-            self.enclosing.as_ref().and_then(|enclosing| enclosing.borrow().get_at(name))
-        )
+        self.values.get(name).map(|val| Rc::clone(val)).or(self
+            .enclosing
+            .as_ref()
+            .and_then(|enclosing| enclosing.borrow().get_at(name)))
     }
 }
 
@@ -322,9 +331,9 @@ impl Interpreter {
     fn execute_fun_decl(&mut self, decl: &FunDecl) -> Result<(), FlowInterruption> {
         self.environment.borrow_mut().define(
             decl.name.lexeme.clone(),
-            Rc::new(RefCell::new(Value::Callable(Callable::Function(
-                Rc::new(self.parse_fun_decl(decl)),
-            )))),
+            Rc::new(RefCell::new(Value::Callable(Callable::Function(Rc::new(
+                self.parse_fun_decl(decl),
+            ))))),
         );
         Ok(())
     }
@@ -719,39 +728,40 @@ impl Interpreter {
     }
 
     // XXX FIXME: split this method
-    fn evaluate_super(&mut self, Super { keyword, method}: &Super) -> Result<Rc<RefCell<Value>>, FlowInterruption> {
+    fn evaluate_super(
+        &mut self,
+        Super { keyword, method }: &Super,
+    ) -> Result<Rc<RefCell<Value>>, FlowInterruption> {
+        // NOTE - assumption here: no user defined variable or function can be named `this`
+        // this is enforced by the parser
+        // hence if `this` is present in the environment it is necessarily an object instance
         let this = self.environment.borrow().get_at(THIS);
         match this {
-            Some(val) => {
-                match &*val.borrow() {
-                     Value::ClassInstance(instance) => {
-                         let class = &instance.borrow().class;
-                         match &class.superclass {
-                             Some(superclass) => {
-                                 match superclass.find_method(&method.lexeme) {
-                                    Some(super_method) => {
-                                        Ok(Rc::new(RefCell::new(Value::Callable(Callable::Function(super_method)))))
-                                    },
-                                    None => Err(FlowInterruption::RuntimeError(RuntimeError {
-                                        token: method.clone(),
-                                        message: format!("Undefined property '{}'.", method.lexeme),
-                                    }))
-                                 }
-                             },
+            Some(val) => match &*val.borrow() {
+                Value::ClassInstance(instance) => {
+                    let class = &instance.borrow().class;
+                    match &class.superclass {
+                        Some(superclass) => match superclass.reversed_find_method(&method.lexeme) {
+                            Some(super_method) => Ok(Rc::new(RefCell::new(Value::Callable(
+                                Callable::Function(super_method),
+                            )))),
                             None => Err(FlowInterruption::RuntimeError(RuntimeError {
-                                token: keyword.clone(),
-                                message: "Can't use 'super' in a class with no superclass.".to_string(),
-                            }))
-                         }
-
-                     },
-                     _ => panic!("this was not an instance!"),
+                                token: method.clone(),
+                                message: format!("Undefined property '{}'.", method.lexeme),
+                            })),
+                        },
+                        None => Err(FlowInterruption::RuntimeError(RuntimeError {
+                            token: keyword.clone(),
+                            message: "Can't use 'super' in a class with no superclass.".to_string(),
+                        })),
+                    }
                 }
-            }
+                _ => panic!("this was not an instance!"),
+            },
             None => Err(FlowInterruption::RuntimeError(RuntimeError {
                 token: keyword.clone(),
                 message: "Can't use 'super' outside of a class.".to_string(),
-            }))
+            })),
         }
     }
 }

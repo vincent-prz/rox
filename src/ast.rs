@@ -802,7 +802,10 @@ pub mod parser {
 
         fn supper(&mut self, keyword: Token) -> Result<Expr, ParseError> {
             self.consume(&Dot, "Expect '.' after 'super'.")?;
-            let method = self.consume(&Identifier("".to_string()), "Expect superclass method name.")?;
+            let method = self.consume(
+                &Identifier("".to_string()),
+                "Expect superclass method name.",
+            )?;
             Ok(Expr::Super(Super { keyword, method }))
         }
     }
