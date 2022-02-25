@@ -385,14 +385,17 @@ pub mod parser {
 
         fn class_decl(&mut self) -> Result<ClassDecl, ParseError> {
             self.advance(); // discard class token
-            // FIXME: need to create fake identifier to check Identifier type -> ugly
+                            // FIXME: need to create fake identifier to check Identifier type -> ugly
             let name = self.consume(&Identifier("".to_string()), "Expect class name.")?;
 
             let mut superclass = None;
             if self.check(&Less) {
                 self.advance();
-                let superclass_name = self.consume(&Identifier("".to_string()), "Expect superclass name.")?;
-                superclass = Some(Variable { name: superclass_name});
+                let superclass_name =
+                    self.consume(&Identifier("".to_string()), "Expect superclass name.")?;
+                superclass = Some(Variable {
+                    name: superclass_name,
+                });
             }
 
             self.consume(&LeftBrace, &format!("Expect '{{' before class body."))?;
@@ -402,7 +405,11 @@ pub mod parser {
                 methods.push(meth);
             }
             self.consume(&RightBrace, &format!("Expect '}}' after class body."))?;
-            Ok(ClassDecl { name, superclass, methods })
+            Ok(ClassDecl {
+                name,
+                superclass,
+                methods,
+            })
         }
 
         fn fun_decl(&mut self, kind: &str) -> Result<FunDecl, ParseError> {

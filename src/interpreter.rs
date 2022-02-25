@@ -59,7 +59,14 @@ fn get_from_class_instance(
     if let Some(val) = instance.borrow().fields.get(&name.lexeme) {
         return Ok(Rc::clone(val));
     }
-    if let Some(method) = instance.borrow().class.methods.get(&name.lexeme) {
+    let methods = &instance.borrow().class.methods;
+    if let Some(method) = methods.get(&name.lexeme).or(instance
+        .borrow()
+        .class
+        .superclass
+        .as_ref()
+        .and_then(|superclass| superclass.methods.get(&name.lexeme)))
+    {
         return Ok(Rc::new(RefCell::new(Value::Callable(Callable::Function(
             method.clone().bind(Rc::clone(&instance)),
         )))));
@@ -299,11 +306,13 @@ impl Interpreter {
         };
         self.environment.borrow_mut().define(
             name.clone(),
-            Rc::new(RefCell::new(Value::Callable(Callable::Class(Rc::new(Class {
-                name,
-                superclass,
-                methods,
-            }))))),
+            Rc::new(RefCell::new(Value::Callable(Callable::Class(Rc::new(
+                Class {
+                    name,
+                    superclass,
+                    methods,
+                },
+            ))))),
         );
         Ok(())
     }
