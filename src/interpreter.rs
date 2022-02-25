@@ -623,7 +623,7 @@ impl Interpreter {
             Callable::Function(function) => self.perform_function_call(function, arguments),
             Callable::Class(class) => {
                 let new_instance = Rc::new(RefCell::new(class.make_new_instance()));
-                if let Some(initializer) = class.methods.get(INIT) {
+                if let Some(initializer) = class.find_method(INIT) {
                     let bound_initializer = initializer.bind(Rc::clone(&new_instance));
                     self.perform_function_call(&bound_initializer, arguments)?;
                 }
