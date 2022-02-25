@@ -42,6 +42,13 @@ impl Class {
     fn make_new_instance(&self) -> ClassInstance {
         ClassInstance::new(self.clone())
     }
+
+    fn find_method(&self, name: &str) -> Option<&Function> {
+        self.methods.get(name).or(self
+            .superclass
+            .as_ref()
+            .and_then(|superclass| superclass.find_method(name)))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -59,16 +66,9 @@ fn get_from_class_instance(
     if let Some(val) = instance.borrow().fields.get(&name.lexeme) {
         return Ok(Rc::clone(val));
     }
-    let methods = &instance.borrow().class.methods;
-    if let Some(method) = methods.get(&name.lexeme).or(instance
-        .borrow()
-        .class
-        .superclass
-        .as_ref()
-        .and_then(|superclass| superclass.methods.get(&name.lexeme)))
-    {
+    if let Some(method) = instance.borrow().class.find_method(&name.lexeme) {
         return Ok(Rc::new(RefCell::new(Value::Callable(Callable::Function(
-            method.clone().bind(Rc::clone(&instance)),
+            method.bind(Rc::clone(&instance)),
         )))));
     }
     Err(FlowInterruption::RuntimeError(RuntimeError::new(
