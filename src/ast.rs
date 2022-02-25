@@ -55,6 +55,7 @@ pub enum Expr {
     Get(Get),
     Set(Set),
     This(Token),
+    Super(Super),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -123,6 +124,12 @@ pub struct Assignment {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub struct Super {
+    pub keyword: Token,
+    pub method: Token,
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct IfStmt {
     pub condition: Expr,
     pub then_branch: Box<Statement>,
@@ -157,6 +164,7 @@ pub mod printer {
             Expr::Get(get) => pretty_print_get(get),
             Expr::Set(set) => pretty_print_set(set),
             Expr::This(_) => "this".to_string(),
+            Expr::Super(Super { keyword: _, method }) => format!("super.{}", method.lexeme),
         }
     }
 
@@ -286,8 +294,10 @@ pub mod parser {
     factor         → unary ( ( "/" | "*" ) unary )* ;
     unary          → ( "!" | "-" ) unary | call
     call           → primary ( "(" arguments? ")" | "." IDENTIFIER )* ;
-    primary        → NUMBER | STRING | "true" | "false" | "nil"
-                   | "(" expression ")" | IDENTIFIER ;
+    primary        → NUMBER | STRING | "true" | "false" | "nil" | "this"
+                   | "(" expression ")" | IDENTIFIER
+                   | "super" "." IDENTIFIER ;
+
     arguments      → expression ( "," expression )* ;
 
     */
@@ -761,6 +771,7 @@ pub mod parser {
                 }
                 Identifier(_) => Ok(Expr::Variable(Variable { name: token })),
                 This => Ok(Expr::This(token)),
+                Super => self.supper(token),
                 _ => Err(ParseError {
                     message: "Expect expression".to_string(),
                     token,
@@ -787,6 +798,12 @@ pub mod parser {
                 });
             }
             Ok(arguments)
+        }
+
+        fn supper(&mut self, keyword: Token) -> Result<Expr, ParseError> {
+            self.consume(&Dot, "Expect '.' after 'super'.")?;
+            let method = self.consume(&Identifier("".to_string()), "Expect superclass method name.")?;
+            Ok(Expr::Super(Super { keyword, method }))
         }
     }
 }

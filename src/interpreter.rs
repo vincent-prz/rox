@@ -1,6 +1,6 @@
 use crate::ast::{
     Assignment, Binary, Call, ClassDecl, Declaration, Expr, FunDecl, Get, IfStmt, Literal, Logical,
-    Program, ReturnStmt, Set, Statement, Unary, VarDecl, Variable, WhileStmt,
+    Program, ReturnStmt, Set, Statement, Super, Unary, VarDecl, Variable, WhileStmt,
 };
 use crate::token::{Token, TokenType};
 use std::cell::RefCell;
@@ -27,7 +27,7 @@ pub enum Value {
 #[derive(Debug, Clone)]
 pub enum Callable {
     NativeClock,
-    Function(Function),
+    Function(Rc<Function>),
     Class(Rc<Class>),
 }
 
@@ -35,7 +35,7 @@ pub enum Callable {
 pub struct Class {
     name: String,
     superclass: Option<Rc<Class>>,
-    methods: HashMap<String, Function>,
+    methods: HashMap<String, Rc<Function>>,
 }
 
 impl Class {
@@ -43,8 +43,8 @@ impl Class {
         ClassInstance::new(self.clone())
     }
 
-    fn find_method(&self, name: &str) -> Option<&Function> {
-        self.methods.get(name).or(self
+    fn find_method(&self, name: &str) -> Option<Rc<Function>> {
+        self.methods.get(name).map(Rc::clone).or(self
             .superclass
             .as_ref()
             .and_then(|superclass| superclass.find_method(name)))
@@ -68,7 +68,7 @@ fn get_from_class_instance(
     }
     if let Some(method) = instance.borrow().class.find_method(&name.lexeme) {
         return Ok(Rc::new(RefCell::new(Value::Callable(Callable::Function(
-            method.bind(Rc::clone(&instance)),
+            Rc::new(method.bind(Rc::clone(&instance))),
         )))));
     }
     Err(FlowInterruption::RuntimeError(RuntimeError::new(
@@ -235,7 +235,9 @@ impl Environment {
     }
 
     fn get_at(&self, name: &str) -> Option<Rc<RefCell<Value>>> {
-        self.values.get(name).map(|val| Rc::clone(val))
+        self.values.get(name).map(|val| Rc::clone(val)).or(
+            self.enclosing.as_ref().and_then(|enclosing| enclosing.borrow().get_at(name))
+        )
     }
 }
 
@@ -285,7 +287,7 @@ impl Interpreter {
         for ast_method in &decl.methods {
             methods.insert(
                 ast_method.name.lexeme.clone(),
-                self.parse_fun_decl(ast_method),
+                Rc::new(self.parse_fun_decl(ast_method)),
             );
         }
         let superclass = match &decl.superclass {
@@ -321,7 +323,7 @@ impl Interpreter {
         self.environment.borrow_mut().define(
             decl.name.lexeme.clone(),
             Rc::new(RefCell::new(Value::Callable(Callable::Function(
-                self.parse_fun_decl(decl),
+                Rc::new(self.parse_fun_decl(decl)),
             )))),
         );
         Ok(())
@@ -442,6 +444,7 @@ impl Interpreter {
             Expr::Get(get) => self.evaluate_get(get),
             Expr::Set(set) => self.evaluate_set(set),
             Expr::This(name) => self.evaluate_variable(name),
+            Expr::Super(supper) => self.evaluate_super(supper),
         }
     }
 
@@ -712,6 +715,43 @@ impl Interpreter {
                 set.name.clone(),
                 "Only instances have fields.".to_string(),
             ))),
+        }
+    }
+
+    // XXX FIXME: split this method
+    fn evaluate_super(&mut self, Super { keyword, method}: &Super) -> Result<Rc<RefCell<Value>>, FlowInterruption> {
+        let this = self.environment.borrow().get_at(THIS);
+        match this {
+            Some(val) => {
+                match &*val.borrow() {
+                     Value::ClassInstance(instance) => {
+                         let class = &instance.borrow().class;
+                         match &class.superclass {
+                             Some(superclass) => {
+                                 match superclass.find_method(&method.lexeme) {
+                                    Some(super_method) => {
+                                        Ok(Rc::new(RefCell::new(Value::Callable(Callable::Function(super_method)))))
+                                    },
+                                    None => Err(FlowInterruption::RuntimeError(RuntimeError {
+                                        token: method.clone(),
+                                        message: format!("Undefined property '{}'.", method.lexeme),
+                                    }))
+                                 }
+                             },
+                            None => Err(FlowInterruption::RuntimeError(RuntimeError {
+                                token: keyword.clone(),
+                                message: "Can't use 'super' in a class with no superclass.".to_string(),
+                            }))
+                         }
+
+                     },
+                     _ => panic!("this was not an instance!"),
+                }
+            }
+            None => Err(FlowInterruption::RuntimeError(RuntimeError {
+                token: keyword.clone(),
+                message: "Can't use 'super' outside of a class.".to_string(),
+            }))
         }
     }
 }
