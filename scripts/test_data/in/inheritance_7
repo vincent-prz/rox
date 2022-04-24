@@ -1,0 +1,9 @@
+class Bar {
+   init() {
+       print "Super init is called!";
+   } 
+}
+
+class Foo < Bar {}
+
+Foo();

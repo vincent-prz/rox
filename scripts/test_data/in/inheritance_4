@@ -1,0 +1,9 @@
+class Bar {
+    hello() {
+        print "hello!";
+    }
+}
+
+class Foo < Bar {}
+var foo = Foo();
+foo.hello();
